@@ -156,13 +156,13 @@ class MockApiClient implements ApiClient {
                 reason: '아직 ‘미이해’로 남아 있는 개념입니다.',
               ))
           .toList(),
-      expansionConcepts: retryIds
+      retryConcepts: retryIds
           .map(graph.nodeById)
           .whereType<GraphNode>()
-          .map((n) => ExpansionRecommendation(
+          .map((n) => RetryRecommendation(
                 conceptId: n.id,
                 conceptTag: n.concept,
-                reason: ExpansionReason.retry,
+                reason: RetryReason.retry,
               ))
           .toList(),
       articles: const [],

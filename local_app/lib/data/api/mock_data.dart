@@ -147,11 +147,11 @@ abstract final class MockData {
         gapConcepts: [],
         // 형제 신호: 같은 ‘무역수지’로 이어지는 선행 중 기준금리는 이미 이해완료다.
         // 그 옆 갈래인 재고순환을 심화 후보로 권한다.
-        expansionConcepts: [
-          ExpansionRecommendation(
+        retryConcepts: [
+          RetryRecommendation(
             conceptId: 'c_재고순환',
             conceptTag: '재고순환',
-            reason: ExpansionReason.sibling,
+            reason: RetryReason.sibling,
           ),
         ],
         articles: [

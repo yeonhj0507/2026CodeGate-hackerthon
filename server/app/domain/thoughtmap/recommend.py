@@ -1,10 +1,14 @@
 """추천 생성 (명세 §4.4).
 
-세 갈래를 낸다.
+네 갈래를 낸다.
 
 - **결핍 보완(gap):** 미이해 노드와 그 인접(선행) 개념 중 아직 확인되지 않은 것.
-- **확장(expansion):** 이해완료를 발판 삼은 심화. **LLM 을 쓰지 않고 그래프 구조만으로** 뽑는다.
-- **읽을 만한 기사:** 위 두 갈래를 모두 근거로 제휴 데이터셋을 랭킹.
+- **확장(expansion):** 이해한 개념과 같은 기사에서 함께 다뤄지는 **새 개념**. 아직 그래프에 없다.
+- **다시 도전(retry):** 선행은 익혔는데 본 주장은 틀린 것. 그래프 구조만으로 뽑는다.
+- **읽을 만한 기사:** 위 갈래를 모두 근거로 제휴 데이터셋을 랭킹.
+
+확장과 다시 도전을 나눈 이유: 둘 다 이해완료를 발판 삼지만 확장은 **아직 없는 새 것**,
+다시 도전은 **이미 있고 틀린 것**이다. 한 섹션에 섞으면 "확장"이 오답 복기를 가리킨다.
 """
 
 from sqlalchemy import select
@@ -19,6 +23,7 @@ from app.domain.schemas import (
     ConceptRecommendation,
     ExpansionConcept,
     Graph,
+    RetryConcept,
     Recommendations,
     UserContext,
 )
@@ -27,6 +32,7 @@ from app.domain.thoughtmap.merge import normalize_concept
 
 MAX_CONCEPTS = 8
 MAX_EXPANSION = 5
+MAX_RETRY = 5
 MAX_ARTICLES = 5
 
 
@@ -78,8 +84,8 @@ def recommend_gap_concepts(graph: Graph) -> list[ConceptRecommendation]:
     ]
 
 
-def recommend_expansion_concepts(graph: Graph) -> list[ExpansionConcept]:
-    """확장 개념 — 이해완료를 발판 삼은 심화 (명세 §4.4, 구현계획③ §2.3-5).
+def recommend_retry_concepts(graph: Graph) -> list[RetryConcept]:
+    """다시 도전할 개념 — 오답 되짚기 (명세 §4.4, 구현계획③ §2.3-5).
 
     두 신호를 쓰며 **Claude 호출이 없다**. 순수 그래프 쿼리다.
 
@@ -87,6 +93,9 @@ def recommend_expansion_concepts(graph: Graph) -> list[ExpansionConcept]:
        오답 → 선행으로 내려가 선행만 맞힌 케이스를 되짚어 "이제 M에 다시 도전"을 권한다.
     2. 형제(보조): 같은 후행 M 을 공유하는 선행들 중 하나가 이해완료라면, 아직 이해완료가
        아닌 나머지 형제를 권한다.
+
+    **확장 추천과 분리돼 있다.** 둘 다 이해완료를 발판 삼지만 이쪽은 이미 그래프에 있고
+    틀린 것이고, 확장은 아직 그래프에 없는 새 개념이다([recommend_expansion_concepts]).
 
     오답·역탐색 이력이 없는 초반(콜드스타트)에는 빈 목록이 나오며, 그것이 정상 동작이다.
     """
@@ -96,14 +105,14 @@ def recommend_expansion_concepts(graph: Graph) -> list[ExpansionConcept]:
         node = by_id.get(node_id)
         return node.state if node else None
 
-    picked: dict[str, ExpansionConcept] = {}
+    picked: dict[str, RetryConcept] = {}
 
     # (1) 재도전 — 주 신호라 먼저 채운다.
     for edge in graph.edges:
         if state_of(edge.from_) == STATE_UNDERSTOOD and state_of(edge.to) == STATE_NOT_UNDERSTOOD:
             picked.setdefault(
                 edge.to,
-                ExpansionConcept(
+                RetryConcept(
                     conceptId=edge.to, conceptTag=by_id[edge.to].concept, reason="retry"
                 ),
             )
@@ -121,7 +130,7 @@ def recommend_expansion_concepts(graph: Graph) -> list[ExpansionConcept]:
             if state_of(sibling) != STATE_UNDERSTOOD:
                 picked.setdefault(
                     sibling,
-                    ExpansionConcept(
+                    RetryConcept(
                         conceptId=sibling,
                         conceptTag=by_id[sibling].concept,
                         reason="sibling",
@@ -130,7 +139,65 @@ def recommend_expansion_concepts(graph: Graph) -> list[ExpansionConcept]:
 
     # 재도전이 먼저 오도록 정렬한 뒤 상한을 건다.
     ordered = sorted(picked.values(), key=lambda e: (e.reason != "retry", e.conceptTag))
-    return ordered[:MAX_EXPANSION]
+    return ordered[:MAX_RETRY]
+
+
+async def recommend_expansion_concepts(
+    db: AsyncSession, graph: Graph
+) -> list[ExpansionConcept]:
+    """확장 개념 — **아는 것에서 뻗어나가는 새 키워드**.
+
+    제휴 기사의 `concept_tags` 를 이웃 관계로 쓴다. 내가 이해완료한 개념이 들어 있는
+    기사를 찾고, 그 기사가 함께 다루는 개념 중 **아직 내 그래프에 없는 것**을 권한다.
+    "같은 기사에서 함께 설명되는 개념이면 다음에 알 만하다"는 가정이다.
+
+    LLM 호출이 없다(명세 §4.4 "Claude 자유 생성 없음"). 순수 쿼리다.
+
+    그래프 안에서 뽑는 신호는 쓸 수 없었다. 관계 방향이 선행→후행이라 `unknown` 노드는
+    거의 항상 **아래쪽(더 깊은 선행)**에 생기고, 그러면 "아는 것 위로 한 걸음"이 아니라
+    "아는 것 아래로 파고들기"가 된다. 그건 결핍 보완이 이미 하는 일이다.
+
+    제휴 데이터셋이 사용자의 관심 주제를 못 덮으면 빈 목록이 나온다. 그때는 화면이
+    "아직 추천할 키워드가 없어요"로 남으며, 그것이 정상 동작이다.
+    """
+    understood = {n.id for n in graph.nodes if n.state == STATE_UNDERSTOOD}
+    if not understood:
+        return []
+
+    known = {n.id for n in graph.nodes}
+    rows = (await db.execute(select(PartnerArticle))).scalars().all()
+
+    # 새 개념 → (동시 등장 횟수, 근거가 된 내 개념들, 표기)
+    score: dict[str, int] = {}
+    via: dict[str, list[str]] = {}
+    label: dict[str, str] = {}
+
+    for row in rows:
+        tags = [str(t) for t in (row.concept_tags or [])]
+        keyed = [(normalize_concept(t), t) for t in tags]
+        mine = [key for key, _ in keyed if key in understood]
+        if not mine:
+            continue
+        for key, tag in keyed:
+            # 이미 그래프에 있으면 "새 키워드"가 아니다.
+            if key in known:
+                continue
+            score[key] = score.get(key, 0) + len(mine)
+            label.setdefault(key, tag)
+            for m in mine:
+                if m not in via.setdefault(key, []):
+                    via[key].append(m)
+
+    ordered = sorted(score.items(), key=lambda kv: (-kv[1], label[kv[0]]))
+    return [
+        ExpansionConcept(
+            conceptId=key,
+            conceptTag=label[key],
+            reason="neighbor",
+            viaConcepts=via[key],
+        )
+        for key, _ in ordered[:MAX_EXPANSION]
+    ]
 
 
 async def recommend_articles(
@@ -213,14 +280,26 @@ async def build_recommendations(
     context: UserContext,
     search: SearchProvider | None = None,
 ) -> Recommendations:
-    expansion = recommend_expansion_concepts(graph)
+    expansion = await recommend_expansion_concepts(db, graph)
+    retry = recommend_retry_concepts(graph)
 
-    # 같은 개념이 두 섹션에 동시에 뜨면 사용자가 혼란스럽다. 확장 쪽 안내가 더 구체적이므로
+    # 같은 개념이 두 섹션에 동시에 뜨면 사용자가 혼란스럽다. 재도전 쪽 안내가 더 구체적이므로
     # (무엇을 발판으로 어디로 가라) 겹치는 개념은 결핍 목록에서 뺀다.
-    expanded_ids = {e.conceptId for e in expansion}
-    gap = [c for c in recommend_gap_concepts(graph) if c.conceptId not in expanded_ids]
+    # 확장은 그래프에 없는 개념만 담으므로 결핍과 겹칠 일이 없다.
+    retry_ids = {e.conceptId for e in retry}
+    gap = [c for c in recommend_gap_concepts(graph) if c.conceptId not in retry_ids]
 
     articles = await recommend_articles(
-        db, [c.conceptTag for c in gap] + [e.conceptTag for e in expansion], context, search
+        db,
+        [c.conceptTag for c in gap]
+        + [e.conceptTag for e in retry]
+        + [e.conceptTag for e in expansion],
+        context,
+        search,
     )
-    return Recommendations(gapConcepts=gap, expansionConcepts=expansion, articles=articles)
+    return Recommendations(
+        gapConcepts=gap,
+        expansionConcepts=expansion,
+        retryConcepts=retry,
+        articles=articles,
+    )

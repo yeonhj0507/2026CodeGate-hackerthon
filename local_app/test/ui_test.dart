@@ -172,9 +172,16 @@ void main() {
       ],
       expansionConcepts: [
         ExpansionRecommendation(
+          conceptId: 'c_수입물가',
+          conceptTag: '수입물가',
+          viaConcepts: ['환율'],
+        ),
+      ],
+      retryConcepts: [
+        RetryRecommendation(
           conceptId: 'c_기준금리',
           conceptTag: '기준금리',
-          reason: ExpansionReason.retry,
+          reason: RetryReason.retry,
         ),
       ],
       articles: [
@@ -187,24 +194,27 @@ void main() {
       ],
     );
 
-    testWidgets('세 섹션으로 나눠 보여준다(명세 §5.3)', (tester) async {
+    testWidgets('네 갈래를 섹션으로 나눠 보여준다(명세 §5.3)', (tester) async {
       await tester
           .pumpWidget(host(const RecommendationPanel(recommendations: recs, graph: Graph.empty)));
       await tester.pumpAndSettle();
 
       expect(find.text('모를 것 같은 개념'), findsOneWidget);
       expect(find.text('확장 개념'), findsOneWidget);
+      expect(find.text('다시 도전할 개념'), findsOneWidget);
       expect(find.text('읽을 만한 기사'), findsOneWidget);
+      // 확장은 그래프에 없는 새 개념이고, 무엇을 발판으로 왔는지를 말한다.
+      expect(find.text('수입물가'), findsOneWidget);
+      expect(find.textContaining('환율'), findsWidgets);
       expect(find.text('실질금리'), findsOneWidget);
       expect(find.text('기준금리'), findsOneWidget);
       // 서버는 신호 종류만 주고 문구는 앱이 만든다.
-      expect(find.text(ExpansionReason.retry.label), findsOneWidget);
+      expect(find.text(RetryReason.retry.label), findsOneWidget);
       expect(find.text('30초 만에 이해하는 실질금리'), findsOneWidget);
       expect(find.textContaining('한겨레'), findsOneWidget);
     });
 
-    testWidgets('확장 추천이 없으면 콜드스타트 안내를 보여준다(명세 §4.4 한계)',
-        (tester) async {
+    testWidgets('확장 후보가 없으면 안내 문구를 보여준다', (tester) async {
       const onlyGap = Recommendations(
         gapConcepts: [
           ConceptRecommendation(conceptId: 'c_a', conceptTag: 'A'),
@@ -214,7 +224,19 @@ void main() {
           .pumpWidget(host(const RecommendationPanel(recommendations: onlyGap, graph: Graph.empty)));
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('아직 확장 추천이 없어요'), findsOneWidget);
+      expect(find.textContaining('아직 추천할 키워드가 없어요'), findsOneWidget);
+    });
+
+    testWidgets('다시 도전할 개념이 없으면 그 섹션은 통째로 숨긴다', (tester) async {
+      // 확장과 달리 "틀린 게 없다"는 안내할 일이 아니다.
+      const onlyGap = Recommendations(
+        gapConcepts: [ConceptRecommendation(conceptId: 'c_a', conceptTag: 'A')],
+      );
+      await tester.pumpWidget(host(
+          const RecommendationPanel(recommendations: onlyGap, graph: Graph.empty)));
+      await tester.pumpAndSettle();
+
+      expect(find.text('다시 도전할 개념'), findsNothing);
     });
 
     // 개념 카드를 누르면 **이 패널 안에서** 상세가 열린다. 예전에는 지도 선택도

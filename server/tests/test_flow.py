@@ -145,7 +145,7 @@ async def test_expansion_recommends_retry_after_prereq_recovered(client):
     ).json()
     rec = body["recommendations"]
 
-    retry = [e for e in rec["expansionConcepts"] if e["reason"] == "retry"]
+    retry = [e for e in rec["retryConcepts"] if e["reason"] == "retry"]
     assert [e["conceptTag"] for e in retry] == ["기준금리"]
 
     # 확장으로 뽑힌 개념은 결핍 목록에 중복 등장하지 않는다.
