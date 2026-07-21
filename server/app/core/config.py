@@ -24,6 +24,15 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     anthropic_model: str = "claude-opus-4-8"
 
+    # --- 기사 검색 (네이버 뉴스 검색 API) ---
+    #
+    # 원래 Claude 의 web_search 로 찾았는데 호출당 9분·입력 1만9천 토큰까지 늘어나
+    # 동기화 응답 시간과 비용을 혼자 지배했다. 뉴스 검색은 전용 API 가 훨씬 빠르고
+    # 싸다(무료 할당 일 25,000회). 키가 없으면 검색 없이 제휴 데이터셋만 쓴다 —
+    # 추천 기사는 부가 기능이라 없어도 동기화는 성립한다.
+    naver_client_id: str = ""
+    naver_client_secret: str = ""
+
     # --- 스크랩 버퍼 무한 누적 방지 (명세 §9) ---
     scrap_buffer_ttl_days: int = 7
     scrap_buffer_max_rows: int = 200

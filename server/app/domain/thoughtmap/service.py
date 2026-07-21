@@ -3,6 +3,8 @@
 흐름 B의 서버 측 전부: 버퍼 로드 → 병합 → 개인화 요약 흡수 → 추천 → 버퍼 삭제.
 """
 
+import asyncio
+
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -54,11 +56,20 @@ async def update_thoughtmap(
     ]
     graph = merge(payload.graph, scraps)
 
-    # 3. 개인화 요약 흡수: 미이해 노드에 보충설명을 붙인다(명세 §4.4).
-    await _attach_summaries(graph, llm)
-
-    # 4. 추천 생성
-    recommendations = await recommend.build_recommendations(db, graph, payload.userContext)
+    # 3·4. 개인화 요약(명세 §4.4)과 추천을 **동시에** 돌린다.
+    #
+    # 둘 다 LLM 을 타고 각각 20~60초가 걸리는데, 순서대로 하면 그 합이 그대로
+    # 응답 시간이 되어 로컬앱의 receiveTimeout 을 넘긴다. 넘기면 단순히 느린 게
+    # 아니라 **스크랩이 소실된다** — 서버는 5번에서 버퍼를 지우고 커밋하는데
+    # 클라이언트는 결과를 못 받기 때문이다.
+    #
+    # 서로 기다릴 이유가 없다. 재요약은 노드에 summaryMeta 만 덧붙이고, 추천은
+    # 그 필드를 읽지 않는다(노드 id·상태·개념어와 엣지만 본다). 같은 세션(db)을
+    # 동시에 쓰지도 않는다 — 재요약은 DB 를 건드리지 않는다.
+    _, recommendations = await asyncio.gather(
+        _attach_summaries(graph, llm),
+        recommend.build_recommendations(db, graph, payload.userContext),
+    )
 
     # 5. 반영된 버퍼 삭제 (명세 §4.3)
     if consumed_ids:

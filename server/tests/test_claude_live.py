@@ -98,29 +98,6 @@ async def test_live_explore_explains_concepts_together():
     assert "##" not in text and "**" not in text
 
 
-async def test_live_search_returns_news_only():
-    """나무위키·지식백과가 올라오던 문제. allowed_domains + 사후 필터가 실제로 통하는지."""
-    from app.domain.search.claude_search import ClaudeSearchProvider
-    from app.domain.search.news_domains import is_news
-
-    found = await ClaudeSearchProvider().search_articles(["기준금리", "환율"], 3)
-
-    assert found, "언론사로 좁혀도 결과가 나와야 한다 (0건이면 목록이 너무 좁다는 뜻)"
-    for item in found:
-        assert item.url.startswith("http")
-        assert is_news(item.url), f"뉴스가 아닌 결과가 통과했다: {item.url}"
-        assert item.title
-
-
-async def test_live_search_survives_a_topic_with_no_news():
-    """검색이 빈손이어도 예외를 던지지 않아야 한다 — 추천 실패가 동기화를 막으면 안 된다."""
-    from app.domain.search.claude_search import ClaudeSearchProvider
-
-    found = await ClaudeSearchProvider().search_articles(["ㅁㄴㅇㄹ존재하지않는개념ㅋㅋ"], 2)
-
-    assert isinstance(found, list)
-
-
 async def test_live_summaries_use_graph_context_only():
     from app.domain.llm.base import ConceptContext
 
