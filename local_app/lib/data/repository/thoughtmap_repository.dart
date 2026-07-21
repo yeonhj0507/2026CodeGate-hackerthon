@@ -79,6 +79,24 @@ class ThoughtmapRepository {
 
   Future<List<AppliedScrapRow>> appliedScraps() => _db.loadAppliedScraps();
 
+  /// 추천 탭 O/X 를 맞혔을 때 — 그 개념을 이해완료로 올리고 XP를 준다.
+  ///
+  /// XP 판정은 [evaluateGraphXp] 를 그대로 태운다. 동기화와 같은 규칙(선행을
+  /// 풀었으면 재도전 성공, 아니면 이해 전환)을 쓰고, **dedupeKey 도 같아서**
+  /// 나중에 동기화가 같은 전환을 다시 계산해도 중복 지급되지 않는다.
+  ///
+  /// 미이해였던 노드만 대상이다. 이미 이해완료면 아무 일도 하지 않는다.
+  Future<List<XpEvent>> markUnderstoodByOxQuiz(String nodeId) async {
+    final before = await _db.loadGraph();
+    final node = before.nodeById(nodeId);
+    if (node == null || !node.isNotUnderstood) return const [];
+
+    await _db.setNodeState(nodeId, NodeState.understood);
+    final after = await _db.loadGraph();
+
+    return _db.awardXp(evaluateGraphXp(before: before, after: after));
+  }
+
   // ── 경험치 ──────────────────────────────────────────────────
 
   /// 앱을 연 사실을 남기고, 오늘 첫 접속이면 스트릭 XP를 준다.

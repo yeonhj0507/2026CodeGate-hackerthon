@@ -1,4 +1,5 @@
 import 'package:drift/native.dart';
+import 'package:flutter/gestures.dart' show kLongPressTimeout;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -89,13 +90,51 @@ void main() {
 
   // ─── 셸: 세 탭이 존재하고 서로 오간다 ───────────────────────────────────
 
+  /// 우측 패널은 접힌 채로 시작한다. 세 갈래는 상단 아이콘으로 연다.
+  Future<void> openPanel(WidgetTester tester, String tooltip) async {
+    await tester.tap(find.byTooltip(tooltip));
+    await tester.pumpAndSettle();
+  }
+
   group('홈 셸', () {
-    testWidgets('추천·탐색·보관함 세 갈래가 모두 있다', (tester) async {
+    testWidgets('추천·탐색·보관함 세 갈래를 여는 버튼이 있다', (tester) async {
       await pumpHome(tester, graph: graph);
 
+      expect(find.byTooltip('추천'), findsOneWidget);
+      expect(find.byTooltip('탐색'), findsOneWidget);
+      expect(find.byTooltip('보관함'), findsOneWidget);
+    });
+
+    testWidgets('패널은 접힌 채로 시작하고, 눌러야 열린다', (tester) async {
+      await pumpHome(tester, graph: graph);
+
+      // 처음엔 지도만 보인다. 패널 제목(PanelHeader)이 곧 열림 여부다.
+      expect(find.text('추천'), findsNothing);
+
+      await openPanel(tester, '추천');
       expect(find.text('추천'), findsOneWidget);
+    });
+
+    testWidgets('세 갈래를 서로 오갈 수 있다', (tester) async {
+      await pumpHome(tester, graph: graph);
+
+      await openPanel(tester, '탐색');
       expect(find.text('탐색'), findsOneWidget);
+
+      await openPanel(tester, '보관함');
       expect(find.text('보관함'), findsOneWidget);
+      expect(find.text('탐색'), findsNothing, reason: '한 번에 한 갈래만 열린다');
+    });
+
+    testWidgets('패널을 닫으면 지도만 남는다', (tester) async {
+      await pumpHome(tester, graph: graph);
+      await openPanel(tester, '추천');
+
+      await tester.tap(find.byTooltip('패널 닫기'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('추천'), findsNothing);
+      expect(find.text('환헤지'), findsWidgets, reason: '지도는 그대로 남아야 한다');
     });
 
     testWidgets('생각 지도가 우측 패널과 함께 뜬다', (tester) async {
@@ -115,16 +154,33 @@ void main() {
   // ─── 탐색 탭: 서버를 실제로 부르는가 ────────────────────────────────────
 
   group('탐색 탭', () {
-    testWidgets('키워드를 고르고 버튼을 눌러야 /explore 가 나간다', (tester) async {
+    /// 키워드는 지도에서 노드를 **길게 눌러 끌어다** 드롭 영역에 놓아야 담긴다.
+    /// 탭으로는 담기지 않는다 — 지도를 둘러보다 키워드가 쌓이지 않게 한 것이라
+    /// 조작 방식 자체가 요구사항이다.
+    Future<void> dragConceptToDropZone(WidgetTester tester, String concept) async {
+      final node = find.text(concept).first;
+      final target = find.text('뇌지도에서 개념을 길게 눌러 여기로 끌어다 놓으세요');
+
+      final gesture = await tester.startGesture(tester.getCenter(node));
+      // 길게 누르기가 인식될 때까지 기다린 뒤 끈다.
+      await tester.pump(kLongPressTimeout + const Duration(milliseconds: 100));
+      await gesture.moveTo(tester.getCenter(target));
+      await tester.pump();
+      await gesture.up();
+      await tester.pumpAndSettle();
+    }
+
+    Future<void> openExploreTab(WidgetTester tester) async =>
+        openPanel(tester, '탐색');
+
+    testWidgets('키워드를 담고 버튼을 눌러야 /explore 가 나간다', (tester) async {
       await pumpHome(tester, graph: graph);
-      await tester.tap(find.text('탐색'));
-      await tester.pumpAndSettle();
+      await openExploreTab(tester);
 
-      expect(api.exploreCalls, isEmpty, reason: '아무것도 안 골랐는데 호출되면 안 된다');
+      expect(api.exploreCalls, isEmpty, reason: '아무것도 안 담았는데 호출되면 안 된다');
 
-      await tester.tap(find.text('환헤지').last);
-      await tester.pumpAndSettle();
-      expect(api.exploreCalls, isEmpty, reason: '고르기만 해서는 호출되지 않는다');
+      await dragConceptToDropZone(tester, '환헤지');
+      expect(api.exploreCalls, isEmpty, reason: '담기만 해서는 호출되지 않는다');
 
       await tester.tap(find.text('더 탐색하기'));
       await tester.pumpAndSettle();
@@ -132,13 +188,34 @@ void main() {
       expect(api.exploreCalls, hasLength(1));
     });
 
-    testWidgets('고른 개념의 id 와 이름을 함께 보낸다', (tester) async {
+    testWidgets('키워드를 담아도 지도의 나머지 개념은 그대로 남는다', (tester) async {
+      // 드래그 한 번에 지도에서 다른 노드가 사라지면 지도를 못 쓰게 된다.
+      await pumpHome(tester, graph: graph);
+      await openExploreTab(tester);
+      await dragConceptToDropZone(tester, '환헤지');
+
+      for (final node in graph.nodes) {
+        expect(find.text(node.concept), findsWidgets,
+            reason: '${node.concept} 이 지도에서 사라졌다');
+      }
+    });
+
+    testWidgets('탭만으로는 키워드가 담기지 않는다', (tester) async {
+      await pumpHome(tester, graph: graph);
+      await openExploreTab(tester);
+
+      await tester.tap(find.text('환헤지').first);
+      await tester.pumpAndSettle();
+
+      // 드롭 영역이 여전히 비어 있어야 한다.
+      expect(find.text('뇌지도에서 개념을 길게 눌러 여기로 끌어다 놓으세요'), findsOneWidget);
+    });
+
+    testWidgets('담은 개념의 id 와 이름을 함께 보낸다', (tester) async {
       // 서버는 그래프를 보관하지 않아 id 만으로는 개념명을 모른다(explore.dart 주석).
       await pumpHome(tester, graph: graph);
-      await tester.tap(find.text('탐색'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('환헤지').last);
-      await tester.pumpAndSettle();
+      await openExploreTab(tester);
+      await dragConceptToDropZone(tester, '환헤지');
       await tester.tap(find.text('더 탐색하기'));
       await tester.pumpAndSettle();
 
@@ -147,7 +224,9 @@ void main() {
       expect(req.conceptTags, ['환헤지']);
     });
 
-    testWidgets('응답의 설명과 기사를 화면에 보여준다', (tester) async {
+    testWidgets('응답은 개념별로 쪼개지 않고 한 덩어리로 보여준다', (tester) async {
+      // /explore 는 고른 개념 전체를 묶어 설명 하나를 돌려준다. 키워드마다
+      // 카드를 나누면 "묶었을 때 무엇이 보이는가"라는 기능 자체가 사라진다.
       api.exploreResult = const ExploreResult(
         explanation: '환헤지는 환율 변동 손실을 미리 막는 장치다.',
         articles: [
@@ -156,13 +235,12 @@ void main() {
       );
 
       await pumpHome(tester, graph: graph);
-      await tester.tap(find.text('탐색'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('환헤지').last);
-      await tester.pumpAndSettle();
+      await openExploreTab(tester);
+      await dragConceptToDropZone(tester, '환헤지');
       await tester.tap(find.text('더 탐색하기'));
       await tester.pumpAndSettle();
 
+      expect(find.text('이 개념들을 함께 보면'), findsOneWidget);
       expect(find.text('환헤지는 환율 변동 손실을 미리 막는 장치다.'), findsOneWidget);
       expect(find.text('환헤지 입문'), findsOneWidget);
     });
@@ -175,8 +253,7 @@ void main() {
       await pumpHome(tester, graph: graph);
       final before = api.updateCalls;
 
-      await tester.tap(find.text('보관함'));
-      await tester.pumpAndSettle();
+      await openPanel(tester, '보관함');
 
       expect(find.text('환율 기사'), findsOneWidget);
       // 학습 데이터 원본은 로컬이다(명세 §4.5) — 보관함은 그래프에서 역산한다.

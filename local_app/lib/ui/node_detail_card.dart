@@ -1,23 +1,27 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../data/dto/graph.dart';
-import '../providers/providers.dart';
+import 'app_colors.dart';
 import 'graph_view.dart';
 
-/// 노드 상세. 크로스기사 연결은 그래프에 이미 병합돼 있으므로 별도 탐색 화면
-/// 없이 여기서 "출처 기사" 목록으로 드러난다(명세 §5.1).
+/// 뇌지도에서 노드를 클릭하면 뜨는 노드 상세 카드.
 ///
-/// `summaryMeta`가 개인화 요약이 흡수된 자리다(명세 §4.4) — 별도 요약 열람
-/// 기능은 두지 않는다.
-class NodeDetailPanel extends ConsumerWidget {
-  const NodeDetailPanel({super.key, required this.node, required this.graph});
+/// 도킹 패널(추천/탐색/보관함)과는 완전히 독립적이다 — 그래프 위에 바로
+/// 떠서 상태칩·재요약·출처 기사·선행/후행/연관 개념을 보여주고, 탭 전환은
+/// 일으키지 않는다.
+class NodeDetailCard extends StatelessWidget {
+  const NodeDetailCard({
+    super.key,
+    required this.node,
+    required this.graph,
+    required this.onClose,
+  });
 
   final GraphNode node;
   final Graph graph;
+  final VoidCallback onClose;
 
-  /// 출처 기사 원문 열기. 실패해도 조용히 넘긴다 — 부가 동작이라 흐름을 막지 않는다.
   Future<void> _openArticle(SourceArticle article) async {
     final uri = Uri.tryParse(article.url);
     if (uri == null) return;
@@ -25,9 +29,8 @@ class NodeDetailPanel extends ConsumerWidget {
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final style = nodeStyleOf(node);
-    final scheme = Theme.of(context).colorScheme;
 
     final prereqs = graph.edges
         .where((e) => e.to == node.id && e.type == EdgeType.prereq)
@@ -48,11 +51,18 @@ class NodeDetailPanel extends ConsumerWidget {
         .toList();
 
     return Container(
+      width: 320,
+      constraints: const BoxConstraints(maxHeight: 420),
+      padding: const EdgeInsets.fromLTRB(16, 12, 12, 16),
       decoration: BoxDecoration(
-        color: const Color(0xFF181B26),
-        border: Border(top: BorderSide(color: scheme.outlineVariant)),
+        color: Colors.white,
+        border: Border.all(color: AppColors.border),
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: const [
+          BoxShadow(
+              color: Color(0x1F000000), blurRadius: 20, offset: Offset(0, 6)),
+        ],
       ),
-      padding: const EdgeInsets.fromLTRB(20, 16, 12, 20),
       child: SingleChildScrollView(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -62,54 +72,53 @@ class NodeDetailPanel extends ConsumerWidget {
                 Expanded(
                   child: Text(
                     node.concept,
-                    style: Theme.of(context)
-                        .textTheme
-                        .titleLarge
-                        ?.copyWith(fontWeight: FontWeight.bold),
+                    style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.textPrimary),
                   ),
                 ),
                 IconButton(
                   tooltip: '닫기',
-                  icon: const Icon(Icons.close),
-                  onPressed: () =>
-                      ref.read(selectedNodeIdProvider.notifier).state = null,
+                  icon: const Icon(Icons.close,
+                      size: 16, color: AppColors.textMuted),
+                  onPressed: onClose,
+                  visualDensity: VisualDensity.compact,
                 ),
               ],
             ),
-            const SizedBox(height: 4),
             Wrap(
               spacing: 8,
               children: [
                 _Chip(label: style.label, color: style.border),
                 if (node.isPrereq)
-                  const _Chip(label: '선행개념', color: Color(0xFF8AA0FF)),
+                  const _Chip(label: '선행개념', color: AppColors.pinkMuted),
               ],
             ),
             if (node.summaryMeta != null) ...[
-              const SizedBox(height: 18),
-              _SectionTitle('이 개념, 다시 정리하면'),
+              const SizedBox(height: 14),
+              const _SectionTitle('이 개념, 다시 정리하면'),
               const SizedBox(height: 6),
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.all(14),
+                padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF20242F),
+                  color: AppColors.panelBg,
                   borderRadius: BorderRadius.circular(10),
-                  border: Border(
-                    left: BorderSide(color: style.border, width: 3),
-                  ),
+                  border: Border(left: BorderSide(color: style.border, width: 3)),
                 ),
                 child: Text(
                   node.summaryMeta!,
-                  style: const TextStyle(height: 1.6, fontSize: 13),
+                  style: const TextStyle(
+                      height: 1.6, fontSize: 12.5, color: AppColors.textPrimary),
                 ),
               ),
             ],
             if (node.sourceArticles.isNotEmpty) ...[
-              const SizedBox(height: 18),
+              const SizedBox(height: 14),
               _SectionTitle(
                 node.sourceArticles.length > 1
-                    ? '출처 기사 ${node.sourceArticles.length}건 — 여러 기사에서 반복 등장'
+                    ? '출처 기사 ${node.sourceArticles.length}건'
                     : '출처 기사',
               ),
               const SizedBox(height: 6),
@@ -117,23 +126,24 @@ class NodeDetailPanel extends ConsumerWidget {
                 Padding(
                   padding: const EdgeInsets.only(bottom: 6),
                   child: InkWell(
-                    // URL 이 있으면 원문을 외부 브라우저로 연다.
                     onTap: article.hasUrl ? () => _openArticle(article) : null,
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(Icons.article_outlined,
-                            size: 15, color: scheme.outline),
-                        const SizedBox(width: 8),
+                        const Icon(Icons.article_outlined,
+                            size: 14, color: AppColors.textMuted),
+                        const SizedBox(width: 6),
                         Expanded(
                           child: Text(article.label,
-                              style:
-                                  const TextStyle(fontSize: 12.5, height: 1.4)),
+                              style: const TextStyle(
+                                  fontSize: 12,
+                                  height: 1.4,
+                                  color: AppColors.textPrimary)),
                         ),
                         if (article.hasUrl) ...[
                           const SizedBox(width: 6),
-                          Icon(Icons.open_in_new,
-                              size: 13, color: scheme.outline),
+                          const Icon(Icons.open_in_new,
+                              size: 12, color: AppColors.textMuted),
                         ],
                       ],
                     ),
@@ -141,20 +151,20 @@ class NodeDetailPanel extends ConsumerWidget {
                 ),
             ],
             if (prereqs.isNotEmpty) ...[
-              const SizedBox(height: 18),
-              _SectionTitle('먼저 알아야 하는 개념'),
+              const SizedBox(height: 14),
+              const _SectionTitle('먼저 알아야 하는 개념'),
               const SizedBox(height: 8),
               _NodeChips(nodes: prereqs),
             ],
             if (unlocks.isNotEmpty) ...[
-              const SizedBox(height: 18),
-              _SectionTitle('이 개념이 받쳐주는 개념'),
+              const SizedBox(height: 14),
+              const _SectionTitle('이 개념이 받쳐주는 개념'),
               const SizedBox(height: 8),
               _NodeChips(nodes: unlocks),
             ],
             if (related.isNotEmpty) ...[
-              const SizedBox(height: 18),
-              _SectionTitle('연관 개념'),
+              const SizedBox(height: 14),
+              const _SectionTitle('연관 개념'),
               const SizedBox(height: 8),
               _NodeChips(nodes: related),
             ],
@@ -165,27 +175,37 @@ class NodeDetailPanel extends ConsumerWidget {
   }
 }
 
-/// 연결 개념 칩. 누르면 그래프 선택이 그 노드로 옮겨간다.
-class _NodeChips extends ConsumerWidget {
+/// 연결 개념 칩. 그래프 이동은 하지 않고 라벨만 보여준다 — 다른 노드로 옮기려면
+/// 그래프에서 직접 클릭해야 한다(카드는 지금 선택된 노드 하나만 다룬다).
+class _NodeChips extends StatelessWidget {
   const _NodeChips({required this.nodes});
 
   final List<GraphNode> nodes;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     return Wrap(
-      spacing: 8,
-      runSpacing: 8,
+      spacing: 6,
+      runSpacing: 6,
       children: [
         for (final n in nodes)
-          ActionChip(
-            label: Text(n.concept, style: const TextStyle(fontSize: 12)),
-            avatar: CircleAvatar(
-              radius: 5,
-              backgroundColor: nodeStyleOf(n).border,
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              border: Border.all(color: AppColors.border),
+              borderRadius: BorderRadius.circular(20),
             ),
-            onPressed: () =>
-                ref.read(selectedNodeIdProvider.notifier).state = n.id,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircleAvatar(radius: 4, backgroundColor: nodeStyleOf(n).border),
+                const SizedBox(width: 5),
+                Text(n.concept,
+                    style: const TextStyle(
+                        fontSize: 11.5, color: AppColors.textPrimary)),
+              ],
+            ),
           ),
       ],
     );
@@ -201,11 +221,11 @@ class _SectionTitle extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(
       text,
-      style: TextStyle(
-        fontSize: 11.5,
+      style: const TextStyle(
+        fontSize: 11,
         fontWeight: FontWeight.w700,
         letterSpacing: 0.3,
-        color: Theme.of(context).colorScheme.outline,
+        color: AppColors.textMuted,
       ),
     );
   }
@@ -222,7 +242,7 @@ class _Chip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.15),
+        color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: color.withValues(alpha: 0.6)),
       ),

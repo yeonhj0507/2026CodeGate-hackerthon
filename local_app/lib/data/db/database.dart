@@ -135,6 +135,20 @@ class AppDatabase extends _$AppDatabase {
     });
   }
 
+  /// 노드 하나의 이해상태만 바꾼다.
+  ///
+  /// 로컬에서 상태를 바꿔도 다음 동기화에서 되돌아가지 않는다. 서버 `merge.py` 는
+  /// 클라이언트가 올린 그래프로 노드를 채운 뒤 **이번 스크랩에 등장한 개념만**
+  /// 상태를 덮기 때문이다. 같은 기사를 다시 읽고 또 틀리지 않는 한 유지된다.
+  Future<void> setNodeState(String nodeId, String state) async {
+    await (update(graphNodes)..where((t) => t.id.equals(nodeId))).write(
+      GraphNodesCompanion(
+        state: Value(state),
+        updatedAt: Value(DateTime.now().toUtc()),
+      ),
+    );
+  }
+
   // ── 사용자 컨텍스트 ─────────────────────────────────────────
 
   /// 서버로 보낼 사용자 컨텍스트를 조립한다(명세 §4.4 입력 ③).

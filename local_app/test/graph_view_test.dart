@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:prober_local/data/dto/graph.dart';
+import 'package:prober_local/providers/providers.dart';
 import 'package:prober_local/ui/graph_view.dart';
 
 /// 생각 지도는 **가진 개념을 전부 보여줘야 한다.**
@@ -80,6 +81,47 @@ void main() {
   testWidgets('전체 보기 버튼이 있다', (tester) async {
     await pumpMap(tester, const Size(900, 700));
     expect(find.byIcon(Icons.fit_screen_outlined), findsOneWidget);
+  });
+
+  testWidgets('노드는 길게 눌러 끌 수 있다(탐색 키워드로 담기)', (tester) async {
+    await pumpMap(tester, const Size(900, 700));
+
+    // 끌어다 놓을 대상은 탐색 탭이 갖는다. 여기서는 지도 쪽 손잡이만 확인한다.
+    final draggables =
+        find.byType(LongPressDraggable<String>).evaluate().toList();
+    expect(draggables, hasLength(graph.nodes.length));
+
+    final data = draggables
+        .map((e) => (e.widget as LongPressDraggable<String>).data)
+        .toSet();
+    expect(data, graph.nodes.map((n) => n.id).toSet(),
+        reason: '끌었을 때 넘어가는 값은 노드 id 여야 한다');
+  });
+
+  testWidgets('탭은 선택만 하고 드래그와 섞이지 않는다', (tester) async {
+    // 지도를 둘러보다 의도치 않게 탐색 키워드가 쌓이면 안 되므로,
+    // 탭과 드래그는 서로 다른 제스처로 남아 있어야 한다.
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    tester.view.physicalSize = const Size(900, 700);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(home: Scaffold(body: ThoughtMapView(graph: graph))),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(container.read(selectedNodeIdProvider), isNull);
+
+    await tester.tap(find.text('환헤지'));
+    await tester.pumpAndSettle();
+
+    expect(container.read(selectedNodeIdProvider), 'n4');
   });
 
   testWidgets('개념이 하나뿐이어도(엣지 0) 렌더가 살아 있다', (tester) async {
