@@ -304,6 +304,7 @@ function maxTextDensityContainer(doc: Document): Element {
     if (isInNoise(el)) continue
     const len = el.textContent?.length ?? 0
     if (len < MIN_CONTAINER_TEXT) continue
+    if (!hasParagraphMaterial(el)) continue
     const descendants = el.querySelectorAll('*').length + 1
     const score = len / Math.sqrt(descendants) // 텍스트가 밀집(래퍼가 적을수록)일수록 높음
     if (score > bestScore) {
@@ -312,6 +313,18 @@ function maxTextDensityContainer(doc: Document): Element {
     }
   }
   return best
+}
+
+/**
+ * 이 컨테이너에서 문단을 뽑아낼 재료(블록 요소 또는 <br>)가 있는지.
+ *
+ * 텍스트만 많고 블록도 <br> 도 없는 요소가 밀도 점수 1위를 차지하는 경우가 있다.
+ * 밴쿠버조선의 <div id="floatingLeftWrapper">(3404자·leaf 0·br 0)가 그랬고, 그 결과
+ * 루트를 잘못 잡아 본문 추출이 통째로 실패했다. 애초에 후보에서 뺀다.
+ */
+function hasParagraphMaterial(el: Element): boolean {
+  if (el.querySelector(BLOCK_SELECTOR) !== null) return true
+  return el.querySelectorAll('br').length >= BR_FALLBACK_MIN_BR
 }
 
 /**

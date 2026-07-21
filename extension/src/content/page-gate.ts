@@ -20,17 +20,22 @@ const NEWS_HOSTS =
   /(^|\.)(naver\.com|daum\.net|yna\.co\.kr|joongang\.co\.kr|hani\.co\.kr|chosun\.com|donga\.com|khan\.co\.kr|mk\.co\.kr|hankyung\.com|sbs\.co\.kr|kbs\.co\.kr|imbc\.com|ytn\.co\.kr|news1\.kr|newsis\.com|edaily\.co\.kr|seoul\.co\.kr|segye\.com|munhwa\.com|kmib\.co\.kr|hankookilbo\.com|ohmynews\.com|pressian\.com|mt\.co\.kr|fnnews\.com|asiae\.co\.kr|heraldcorp\.com|nocutnews\.co\.kr|mbn\.co\.kr|jtbc\.co\.kr|tvchosun\.com|zdnet\.co\.kr|bloter\.net)$/i
 
 /**
- * 기사 URL 판별: 경로에 4자리 이상 연속 숫자(기사 ID)가 있는가.
+ * 기사 URL 판별: 경로 **또는 쿼리스트링**에 4자리 이상 연속 숫자(기사 ID)가 있는가.
  *
  * 국내 언론사 기사 URL 은 예외 없이 숫자 ID 를 갖는 반면 섹션 경로는 갖지 않는다.
  *   기사   /view/AKR20260721131700002 · /article/25401234 · /mnews/article/023/0003988697
  *          · /news/economy/12103563
  *   섹션   / · /economy/all · /money · /arti/economy · /section/101 (3자리라 미매칭)
  *
+ * ⚠️ 쿼리스트링까지 봐야 한다. KBS(`/news/pc/view/view.do?ncd=1234567`)·SBS
+ * (`/news/endPage.do?news_id=N1007891234`)처럼 기사 ID 를 쿼리에 두는 곳이 있어,
+ * 경로만 보면 실제 기사가 "기사 아님"으로 막힌다.
+ *
  * 섹션 경로를 나열하는 블록리스트가 아니라 이 방향을 택한 이유: 규칙이 틀렸을 때
  * "목록에서도 열 수 있다"(현상 유지)로 끝나야지 "기사에서 못 연다"가 되면 안 된다.
+ * 같은 이유로 쿼리에 숫자가 있으면 기사 쪽으로 기운다.
  */
-const ARTICLE_ID_IN_PATH = /\d{4,}/
+const ARTICLE_ID_PATTERN = /\d{4,}/
 
 /**
  * URL 만으로 "기사 페이지가 아님"이 확실한지.
@@ -46,5 +51,5 @@ export function isNonArticleUrl(href: string): boolean {
 
   if (!NEWS_HOSTS.test(url.hostname)) return false
 
-  return !ARTICLE_ID_IN_PATH.test(url.pathname)
+  return !ARTICLE_ID_PATTERN.test(url.pathname + url.search)
 }

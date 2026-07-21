@@ -241,8 +241,15 @@ console.log('\n[페이지 게이트 — URL]')
   check('네이버 기사', isNonArticleUrl('https://n.news.naver.com/mnews/article/056/0011234567'), false)
   check('연합 기사', isNonArticleUrl('https://www.yna.co.kr/view/AKR20260721131700002'), false)
   check('중앙 기사', isNonArticleUrl('https://www.joongang.co.kr/article/25401234'), false)
-  // 언론사 목록 밖 호스트는 URL로 판단하지 않는다(구조 게이트에 위임).
+  // 언론사 목록 밖 호스트는 판단하지 않는다.
   check('위키백과는 판단 보류', isNonArticleUrl('https://ko.wikipedia.org/wiki/기준금리'), false)
+  check('밴쿠버조선은 판단 보류', isNonArticleUrl('https://www.vanchosun.com/news/main/frame.php?bdId=87126'), false)
+
+  // 회귀: 기사 ID 가 쿼리스트링에 있는 언론사(KBS·SBS)를 막으면 안 된다.
+  // 경로만 보던 시절 실제 기사가 "기사 아님"으로 차단됐다.
+  check('KBS 기사(쿼리 ID)', isNonArticleUrl('https://news.kbs.co.kr/news/pc/view/view.do?ncd=1234567'), false)
+  check('SBS 기사(쿼리 ID)', isNonArticleUrl('https://news.sbs.co.kr/news/endPage.do?news_id=N1007891234'), false)
+  check('KBS 메인은 막힘', isNonArticleUrl('https://news.kbs.co.kr/news/pc/main/main.html'), true)
 }
 
 console.log('\n[사용자가 보고한 실제 기사 URL — 열려야 한다]')
