@@ -25,6 +25,7 @@ import { createSessionQueue } from './session-bind'
 import { mountPanel, mountStartPrompt, unmountStartPrompt } from './ui/mount'
 import { useSession } from './session'
 import { useQuizFeed } from './quiz-feed'
+import { useSessionEnd } from './session-end'
 import { DETECT_RETRY_DELAYS_MS } from '../shared/constants'
 import { relationsOf } from '../shared/relations'
 import { debugLog } from '../shared/debug'
@@ -115,33 +116,66 @@ async function boot(): Promise<BootResult> {
   const queue = createSessionQueue()
   const observer = createParagraphObserver()
 
-  // 6) 패널 마운트. onEnd = 스크랩 전송 + 세션 정지(종료 후 새 문항 방지).
-  //    ended 상태 UI는 B가 종료 버튼 내부에서 렌더(SessionStore 무변경).
-  mountPanel({
-    onEnd: () => {
-      const results = useSession.getState().flushResults()
-      chrome.runtime
-        .sendMessage(
-          {
-            type: 'SEND_SCRAP',
-            // 원문은 싣지 않는다(명세 §3.4). /quiz 에서 이미 보냈고, 출처는 URL로 식별한다.
-            payload: {
-              articleUrl: location.href,
-              articleTitle: extract.title,
-              results,
-              // 트리가 이미 아는 선행 관계. 사용자가 다 맞혀도 관계는 남아야 한다.
-              relations: relationsOf(quizzes),
-            },
-          } satisfies ChromeMessage,
-        )
-        .catch(() => {
-          // 전송 실패 시 재시도 큐는 C의 T=4/Step 8 소관.
-        })
-      queue.dispose() // phase 구독 해제 → 이후 pump 중단
-      observer.disconnect() // 이후 문단 진입 발화 중단
-      closeStream() // 남은 문항을 더 받지 않는다
-    },
+  // 6) 세션 종료 — 수동 버튼과 자동 완료가 공유한다. 한 번만 실행(재진입 방지):
+  //    스크랩 전송 + 완료화면 표시 + 세션 정지(종료 후 새 문항 방지).
+  let sessionEnded = false
+  let unsubComplete: (() => void) | null = null
+  const endSession = () => {
+    if (sessionEnded) return
+    sessionEnded = true
+    unsubComplete?.() // 이후 IDLE 전이에 자동완료가 다시 발화하지 않게
+    const results = useSession.getState().flushResults()
+    // 완료화면 요약은 flushResults 로 results 가 비워지기 전 스냅샷(여기선 반환값 사용).
+    useSessionEnd.getState().markEnded({
+      solved: results.length,
+      correct: results.filter((r) => r.correct).length,
+    })
+    chrome.runtime
+      .sendMessage(
+        {
+          type: 'SEND_SCRAP',
+          // 원문은 싣지 않는다(명세 §3.4). /quiz 에서 이미 보냈고, 출처는 URL로 식별한다.
+          payload: {
+            articleUrl: location.href,
+            articleTitle: extract.title,
+            results,
+            // 트리가 이미 아는 선행 관계. 사용자가 다 맞혀도 관계는 남아야 한다.
+            relations: relationsOf(quizzes),
+          },
+        } satisfies ChromeMessage,
+      )
+      .catch(() => {
+        // 전송 실패 시 재시도 큐는 C의 T=4/Step 8 소관.
+      })
+    queue.dispose() // phase 구독 해제 → 이후 pump 중단
+    observer.disconnect() // 이후 문단 진입 발화 중단
+    closeStream() // 남은 문항을 더 받지 않는다
+  }
+
+  // 아직 제시 안 됐거나 앵커 대기 중인 문항 수. 0 이면 낼 게 없다.
+  const pendingCount = () => {
+    let n = queue.size() + unanchored.length
+    for (const qs of byParagraph.values()) n += qs.length
+    return n
+  }
+
+  // 문항 루프를 다 돌면 자동으로 학습 종료:
+  //   스트림 끝 + 대기 문항 0 + 지금 푸는 문항 없음(IDLE) + 1개 이상 답함.
+  const maybeAutoComplete = () => {
+    if (sessionEnded || !streamEnded) return
+    const s = useSession.getState()
+    if (s.phase !== 'IDLE' || s.results.length === 0) return
+    if (pendingCount() > 0) return
+    endSession()
+  }
+
+  // 문항 하나가 완결돼 IDLE 로 돌아올 때마다 완료 여부를 점검한다
+  // (재질문 체인까지 끝나야 IDLE 로 오므로, 트리 전체 소진 시점에만 발화).
+  unsubComplete = useSession.subscribe((state, prev) => {
+    if (state.phase === 'IDLE' && prev.phase !== 'IDLE') maybeAutoComplete()
   })
+
+  mountPanel({ onEnd: endSession })
 
   // 7) 단일 콜백을 컨트롤러가 소유: 진입 idx의 Quiz를 큐에 넣고,
   //    마지막 문단 도달 시 unanchored(하단 강등)를 큐 뒤에 1회 append(§2b-확정 결정4).
@@ -205,11 +239,13 @@ async function boot(): Promise<BootResult> {
       streamEnded = true
       useQuizFeed.getState().finish()
       flushUnanchored()
+      maybeAutoComplete() // 마지막 답을 스트림 끝나기 전에 냈다면 여기서 완료 확정
     },
     onError: (error) => {
       streamEnded = true
       useQuizFeed.getState().fail(error)
       flushUnanchored()
+      maybeAutoComplete()
     },
   })
 

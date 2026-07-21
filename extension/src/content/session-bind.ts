@@ -25,6 +25,8 @@ import { useSession } from './session'
 export interface SessionQueue {
   /** Quiz들을 대기열에 넣는다. session이 IDLE이면 즉시 다음 문항을 제시. */
   enqueue: (quizzes: Quiz[]) => void
+  /** 아직 제시하지 못한(대기 중인) 문항 수. 자동 완료 판정에 쓴다. */
+  size: () => number
   /** phase 구독을 해제한다. 재추출·페이지 이탈 시 호출. */
   dispose: () => void
 }
@@ -55,6 +57,7 @@ export function createSessionQueue(): SessionQueue {
       if (quizzes.length > 0) queue.push(...quizzes)
       pump()
     },
+    size: () => queue.length,
     dispose: unsubscribe,
   }
 }
