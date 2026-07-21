@@ -207,8 +207,18 @@ function SignedIn({ email, onSignedOut }: { email: string; onSignedOut: () => vo
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ padding: 16 }}>
-      <h1 style={{ fontSize: 16, margin: '0 0 12px' }}>프로버</h1>
+    <div style={{ padding: 16, background: '#FBFAF9', minHeight: '100%' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '0 0 12px' }}>
+        <span
+          style={{
+            width: 18,
+            height: 18,
+            borderRadius: 6,
+            background: 'linear-gradient(135deg, #FF7A93, #E63B5C)',
+          }}
+        />
+        <h1 style={{ fontSize: 16, fontWeight: 700, color: '#E63B5C', margin: 0 }}>프로버</h1>
+      </div>
       {children}
     </div>
   )
@@ -218,24 +228,25 @@ const styles = {
   input: {
     padding: '8px 10px',
     fontSize: 13,
-    border: '1px solid #d0d0d0',
-    borderRadius: 6,
+    border: '1px solid #ECE7E0',
+    borderRadius: 8,
     outline: 'none',
+    background: '#fff',
   },
   primaryBtn: {
     padding: '9px 10px',
     fontSize: 13,
     fontWeight: 600,
     color: '#fff',
-    background: '#2563eb',
+    background: '#E63B5C',
     border: 'none',
-    borderRadius: 6,
+    borderRadius: 8,
     cursor: 'pointer',
   },
   linkBtn: {
     padding: '4px',
     fontSize: 12,
-    color: '#2563eb',
+    color: '#E63B5C',
     background: 'none',
     border: 'none',
     cursor: 'pointer',
@@ -243,9 +254,9 @@ const styles = {
   error: {
     padding: '8px 10px',
     fontSize: 12,
-    color: '#b91c1c',
-    background: '#fee2e2',
-    borderRadius: 6,
+    color: '#dc2626',
+    background: '#fef2f2',
+    borderRadius: 8,
   },
-  muted: { fontSize: 12, color: '#666', margin: 0 },
+  muted: { fontSize: 12, color: '#6b7280', margin: 0 },
 } satisfies Record<string, React.CSSProperties>

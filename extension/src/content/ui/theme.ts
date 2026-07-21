@@ -190,7 +190,7 @@ export const PROMPT_CSS = /* css */ `
 .prompt {
   --fg: #1a1c1e;
   --muted: #6b7280;
-  --accent: #2563eb;
+  --accent: #E63B5C;
   --bad: #dc2626;
   --bad-weak: #fef2f2;
 
@@ -253,7 +253,7 @@ export const PROMPT_CSS = /* css */ `
   font-weight: 600;
   cursor: pointer;
 }
-.prompt-cta:disabled { background: #cbd5e1; cursor: not-allowed; }
+.prompt-cta:disabled { background: #E6D6DA; cursor: not-allowed; }
 
 .prompt-close {
   position: absolute;
