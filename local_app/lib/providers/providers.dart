@@ -234,14 +234,6 @@ final exploreKeywordProvider = StateProvider<List<String>>((ref) => const []);
 /// 어긋난 채로 남지 않게 하려는 것 — 결과는 항상 버튼을 눌러 갱신한다.
 final exploreRevealedProvider = StateProvider<bool>((ref) => false);
 
-/// 탐색용으로 고른 키워드(구버전 — 칩 다중선택 시절).
-///
-/// 드래그 방식([exploreKeywordProvider])으로 옮겨 가는 중이라 explore_panel 이
-/// 이식되면(5단계) 지운다. 그 전까지 화면이 컴파일되게 남겨 둔다.
-@Deprecated('exploreKeywordProvider 로 대체 — explore_panel 이식 시 제거')
-final exploreSelectionProvider =
-    StateProvider<Set<String>>((ref) => <String>{});
-
 /// "더 탐색하기" 결과. 요청 전에는 null, 요청 중에는 loading.
 class ExploreController extends StateNotifier<AsyncValue<ExploreResult?>> {
   ExploreController(this._api) : super(const AsyncValue.data(null));

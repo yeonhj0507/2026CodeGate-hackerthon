@@ -1,4 +1,5 @@
 import 'package:drift/native.dart';
+import 'package:flutter/gestures.dart' show kLongPressTimeout;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -115,16 +116,35 @@ void main() {
   // ─── 탐색 탭: 서버를 실제로 부르는가 ────────────────────────────────────
 
   group('탐색 탭', () {
-    testWidgets('키워드를 고르고 버튼을 눌러야 /explore 가 나간다', (tester) async {
-      await pumpHome(tester, graph: graph);
+    /// 키워드는 지도에서 노드를 **길게 눌러 끌어다** 드롭 영역에 놓아야 담긴다.
+    /// 탭으로는 담기지 않는다 — 지도를 둘러보다 키워드가 쌓이지 않게 한 것이라
+    /// 조작 방식 자체가 요구사항이다.
+    Future<void> dragConceptToDropZone(WidgetTester tester, String concept) async {
+      final node = find.text(concept).first;
+      final target = find.text('뇌지도에서 개념을 길게 눌러 여기로 끌어다 놓으세요');
+
+      final gesture = await tester.startGesture(tester.getCenter(node));
+      // 길게 누르기가 인식될 때까지 기다린 뒤 끈다.
+      await tester.pump(kLongPressTimeout + const Duration(milliseconds: 100));
+      await gesture.moveTo(tester.getCenter(target));
+      await tester.pump();
+      await gesture.up();
+      await tester.pumpAndSettle();
+    }
+
+    Future<void> openExploreTab(WidgetTester tester) async {
       await tester.tap(find.text('탐색'));
       await tester.pumpAndSettle();
+    }
 
-      expect(api.exploreCalls, isEmpty, reason: '아무것도 안 골랐는데 호출되면 안 된다');
+    testWidgets('키워드를 담고 버튼을 눌러야 /explore 가 나간다', (tester) async {
+      await pumpHome(tester, graph: graph);
+      await openExploreTab(tester);
 
-      await tester.tap(find.text('환헤지').last);
-      await tester.pumpAndSettle();
-      expect(api.exploreCalls, isEmpty, reason: '고르기만 해서는 호출되지 않는다');
+      expect(api.exploreCalls, isEmpty, reason: '아무것도 안 담았는데 호출되면 안 된다');
+
+      await dragConceptToDropZone(tester, '환헤지');
+      expect(api.exploreCalls, isEmpty, reason: '담기만 해서는 호출되지 않는다');
 
       await tester.tap(find.text('더 탐색하기'));
       await tester.pumpAndSettle();
@@ -132,13 +152,22 @@ void main() {
       expect(api.exploreCalls, hasLength(1));
     });
 
-    testWidgets('고른 개념의 id 와 이름을 함께 보낸다', (tester) async {
+    testWidgets('탭만으로는 키워드가 담기지 않는다', (tester) async {
+      await pumpHome(tester, graph: graph);
+      await openExploreTab(tester);
+
+      await tester.tap(find.text('환헤지').first);
+      await tester.pumpAndSettle();
+
+      // 드롭 영역이 여전히 비어 있어야 한다.
+      expect(find.text('뇌지도에서 개념을 길게 눌러 여기로 끌어다 놓으세요'), findsOneWidget);
+    });
+
+    testWidgets('담은 개념의 id 와 이름을 함께 보낸다', (tester) async {
       // 서버는 그래프를 보관하지 않아 id 만으로는 개념명을 모른다(explore.dart 주석).
       await pumpHome(tester, graph: graph);
-      await tester.tap(find.text('탐색'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('환헤지').last);
-      await tester.pumpAndSettle();
+      await openExploreTab(tester);
+      await dragConceptToDropZone(tester, '환헤지');
       await tester.tap(find.text('더 탐색하기'));
       await tester.pumpAndSettle();
 
@@ -147,7 +176,9 @@ void main() {
       expect(req.conceptTags, ['환헤지']);
     });
 
-    testWidgets('응답의 설명과 기사를 화면에 보여준다', (tester) async {
+    testWidgets('응답은 개념별로 쪼개지 않고 한 덩어리로 보여준다', (tester) async {
+      // /explore 는 고른 개념 전체를 묶어 설명 하나를 돌려준다. 키워드마다
+      // 카드를 나누면 "묶었을 때 무엇이 보이는가"라는 기능 자체가 사라진다.
       api.exploreResult = const ExploreResult(
         explanation: '환헤지는 환율 변동 손실을 미리 막는 장치다.',
         articles: [
@@ -156,13 +187,12 @@ void main() {
       );
 
       await pumpHome(tester, graph: graph);
-      await tester.tap(find.text('탐색'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('환헤지').last);
-      await tester.pumpAndSettle();
+      await openExploreTab(tester);
+      await dragConceptToDropZone(tester, '환헤지');
       await tester.tap(find.text('더 탐색하기'));
       await tester.pumpAndSettle();
 
+      expect(find.text('이 개념들을 함께 보면'), findsOneWidget);
       expect(find.text('환헤지는 환율 변동 손실을 미리 막는 장치다.'), findsOneWidget);
       expect(find.text('환헤지 입문'), findsOneWidget);
     });
