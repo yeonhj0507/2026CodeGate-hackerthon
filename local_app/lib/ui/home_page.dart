@@ -60,7 +60,8 @@ class _HomePageState extends ConsumerState<HomePage> {
       backgroundColor: AppColors.canvasBg,
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(32, 24, 32, 24),
+          // 위쪽은 커스텀 타이틀바(38px)가 이미 띄워주므로 덜 준다.
+          padding: const EdgeInsets.fromLTRB(32, 8, 32, 24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
