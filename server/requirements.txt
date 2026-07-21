@@ -15,7 +15,9 @@ slowapi>=0.1.9
 
 # --- 담당3: 도메인 ---
 pgvector>=0.3            # 추천 유사도 검색(스트레치) + partner_articles.embedding 컬럼
-anthropic>=0.42          # 퀴즈 생성·개념 재요약 (LLM_PROVIDER=claude 일 때만 호출)
+# 퀴즈 생성·개념 재요약 (LLM_PROVIDER=claude 일 때만 호출).
+# 0.117 미만에는 adaptive thinking·output_config(effort) 가 없다 — 하한을 낮추지 말 것.
+anthropic>=0.117
 httpx>=0.27              # 데모 스크립트 · 테스트 클라이언트
 
 # --- dev/test ---

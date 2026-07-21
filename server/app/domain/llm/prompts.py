@@ -35,8 +35,12 @@ FOLLOWUP_SCHEMA_L2 = {
         "level": {"type": "integer", "enum": [2]},
         "prereqConceptTag": {"type": "string"},
         "question": {"type": "string"},
-        "options": {"type": "array", "items": {"type": "string"}, "minItems": 4, "maxItems": 4},
-        "answerIndex": {"type": "integer", "minimum": 0, "maximum": 3},
+        "options": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "보기. 반드시 정확히 4개.",
+        },
+        "answerIndex": {"type": "integer", "description": "정답 보기의 0-based 인덱스 (0~3)."},
         "explanation": {"type": "string"},
     },
     "required": [
@@ -47,6 +51,7 @@ FOLLOWUP_SCHEMA_L2 = {
         "answerIndex",
         "explanation",
     ],
+    "additionalProperties": False,
 }
 
 FOLLOWUP_SCHEMA_L1 = {
@@ -55,10 +60,18 @@ FOLLOWUP_SCHEMA_L1 = {
         "level": {"type": "integer", "enum": [1]},
         "prereqConceptTag": {"type": "string"},
         "question": {"type": "string"},
-        "options": {"type": "array", "items": {"type": "string"}, "minItems": 4, "maxItems": 4},
-        "answerIndex": {"type": "integer", "minimum": 0, "maximum": 3},
+        "options": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "보기. 반드시 정확히 4개.",
+        },
+        "answerIndex": {"type": "integer", "description": "정답 보기의 0-based 인덱스 (0~3)."},
         "explanation": {"type": "string"},
-        "followups": {"type": "array", "items": FOLLOWUP_SCHEMA_L2, "maxItems": 1},
+        "followups": {
+            "type": "array",
+            "items": FOLLOWUP_SCHEMA_L2,
+            "description": "2단계 재질문. 0개 또는 1개.",
+        },
     },
     "required": [
         "level",
@@ -69,37 +82,47 @@ FOLLOWUP_SCHEMA_L1 = {
         "explanation",
         "followups",
     ],
+    "additionalProperties": False,
 }
 
 QUIZ_TOOL = {
     "name": "emit_quiz_tree",
     "description": "생성한 퀴즈 트리를 제출한다.",
+    # strict: 키·타입이 스키마를 벗어난 tool 입력이 오지 않도록 API 가 보장한다.
+    # 주의: strict 는 재귀 스키마와 minItems/maxItems/minimum/maximum 을 지원하지 않는다
+    # (400). 그래서 L1/L2 를 펼쳐 정의했고, 개수·범위는 description 과 시스템 프롬프트로
+    # 요구한 뒤 서버(quiz/service.py)가 최종 검증·클램프한다.
+    "strict": True,
     "input_schema": {
         "type": "object",
         "properties": {
             "quiz": {
                 "type": "array",
-                "minItems": 2,
-                "maxItems": 4,
+                "description": "핵심 주장별 문항. 2~4개.",
                 "items": {
                     "type": "object",
                     "properties": {
                         "claimId": {"type": "string", "description": "c1, c2 … 형태"},
                         "conceptTag": {"type": "string"},
-                        "paragraphIndex": {"type": "integer", "minimum": 0},
+                        "paragraphIndex": {
+                            "type": "integer",
+                            "description": "이 주장이 등장한 문단 번호(0-based).",
+                        },
                         "question": {"type": "string"},
                         "options": {
                             "type": "array",
                             "items": {"type": "string"},
-                            "minItems": 4,
-                            "maxItems": 4,
+                            "description": "보기. 반드시 정확히 4개.",
                         },
-                        "answerIndex": {"type": "integer", "minimum": 0, "maximum": 3},
+                        "answerIndex": {
+                            "type": "integer",
+                            "description": "정답 보기의 0-based 인덱스 (0~3).",
+                        },
                         "explanation": {"type": "string"},
                         "followups": {
                             "type": "array",
                             "items": FOLLOWUP_SCHEMA_L1,
-                            "maxItems": 1,
+                            "description": "1단계 재질문. 0개 또는 1개.",
                         },
                     },
                     "required": [
@@ -112,10 +135,12 @@ QUIZ_TOOL = {
                         "explanation",
                         "followups",
                     ],
+                    "additionalProperties": False,
                 },
             }
         },
         "required": ["quiz"],
+        "additionalProperties": False,
     },
 }
 
@@ -139,6 +164,7 @@ SUMMARY_SYSTEM = """\
 SUMMARY_TOOL = {
     "name": "emit_concept_summaries",
     "description": "개념별 보충설명을 제출한다.",
+    "strict": True,
     "input_schema": {
         "type": "object",
         "properties": {
@@ -151,9 +177,11 @@ SUMMARY_TOOL = {
                         "summary": {"type": "string"},
                     },
                     "required": ["concept", "summary"],
+                    "additionalProperties": False,
                 },
             }
         },
         "required": ["summaries"],
+        "additionalProperties": False,
     },
 }
