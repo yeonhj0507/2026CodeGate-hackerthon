@@ -12,14 +12,56 @@ import '../providers/providers.dart';
 /// 상위 개념이 온다.
 ///
 /// 줌·팬은 `GraphView.builder`가 내부에 품은 InteractiveViewer가 담당한다.
-class ThoughtMapView extends ConsumerWidget {
+///
+/// **엣지 없는 노드도 반드시 그린다.** graphview 1.5.1 의 기본 델리게이트는
+/// 그릴 그래프를 *엣지에서만* 모은다([_AllNodesDelegate] 참고). 진단 초기에는
+/// 개념 대부분이 아직 관계를 못 얻어 고립돼 있어서, 그대로 두면 "개념 6"인데
+/// 지도에는 연결된 2개만 뜬다.
+///
+/// **전체 보기(zoomToFit)가 필수다.** Sugiyama 는 서로 연결되지 않은 노드들을
+/// 같은 층에 가로로 죽 늘어놓는다. 진단 초기에는 개념 대부분이 고립돼 있어
+/// 그래프 폭이 뷰포트를 쉽게 넘고, 기본 변환(1배·좌상단)으로 두면 화면에
+/// **연결된 몇 개만 보이고 나머지는 캔버스 밖에 남는다**(헤더는 "개념 6"인데
+/// 지도에는 2개만 뜨는 현상). `calculateGraphBounds` 는 음수 좌표까지 감안하므로
+/// 맞춰 넣으면 전부 들어온다.
+class ThoughtMapView extends ConsumerStatefulWidget {
   const ThoughtMapView({super.key, required this.graph});
 
   final Graph graph;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ThoughtMapView> createState() => _ThoughtMapViewState();
+}
+
+class _ThoughtMapViewState extends ConsumerState<ThoughtMapView> {
+  final _controller = gv.GraphViewController();
+
+  /// 마지막으로 화면에 맞춘 그래프의 모양. 노드·엣지 구성이 바뀔 때만 다시 맞춘다.
+  /// 매 빌드마다 맞추면 사용자가 확대해 둔 상태를 빼앗는다.
+  String? _fittedShape;
+
+  String _shapeOf(Graph g) => [
+        for (final n in g.nodes) n.id,
+        '|',
+        for (final e in g.edges) '${e.from}>${e.to}',
+      ].join(',');
+
+  void _fitWhenShapeChanged(Graph g) {
+    final shape = _shapeOf(g);
+    if (shape == _fittedShape) return;
+    _fittedShape = shape;
+    // 레이아웃이 끝난 뒤라야 뷰포트 크기와 노드 좌표가 잡힌다.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _controller.zoomToFit();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final graph = widget.graph;
     if (graph.isEmpty) return const _EmptyGraph();
+
+    _fitWhenShapeChanged(graph);
 
     // 선택 상태는 일부러 여기서 watch하지 않는다. 여기서 watch하면 노드를 고를
     // 때마다 그래프 전체가 다시 만들어지고 레이아웃이 튄다. 선택 표시는
@@ -55,20 +97,85 @@ class ThoughtMapView extends ConsumerWidget {
       ..levelSeparation = 70
       ..orientation = gv.SugiyamaConfiguration.ORIENTATION_TOP_BOTTOM;
 
-    return gv.GraphView.builder(
-      graph: gvGraph,
-      algorithm: gv.SugiyamaAlgorithm(config),
-      animated: false,
-      // centerGraph는 쓰지 않는다 — 켜면 graphview가 캔버스를 잘못 잡아 노드가
-      // 아예 보이지 않는다. 대신 좌상단 기준으로 그리고, 캔버스가 좁아지면
-      // 사용자가 InteractiveViewer로 끌어서 본다.
-      builder: (gv.Node gvNode) {
-        final id = gvNode.key!.value as String;
-        final node = graph.nodeById(id);
-        if (node == null) return const SizedBox.shrink();
-        return _ConceptNode(node: node);
-      },
+    final algorithm = gv.SugiyamaAlgorithm(config);
+    Widget nodeBuilder(gv.Node gvNode) {
+      final id = gvNode.key!.value as String;
+      final node = graph.nodeById(id);
+      if (node == null) return const SizedBox.shrink();
+      return _ConceptNode(node: node);
+    }
+
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: gv.GraphView.builder(
+            graph: gvGraph,
+            controller: _controller,
+            algorithm: algorithm,
+            animated: false,
+            // centerGraph는 쓰지 않는다 — 켜면 graphview가 캔버스를 잘못 잡아
+            // 노드가 아예 보이지 않는다. 화면 맞춤은 zoomToFit 이 맡는다.
+            builder: nodeBuilder,
+          )..delegate = _AllNodesDelegate(
+              graph: gvGraph,
+              algorithm: algorithm,
+              builder: nodeBuilder,
+              controller: _controller,
+            ),
+        ),
+        // 확대하다 길을 잃어도 한 번에 돌아올 수 있게 둔다. 자동 맞춤은 그래프
+        // 모양이 바뀔 때만 돌기 때문에, 그 사이의 탈출구가 필요하다.
+        Positioned(
+          left: 16,
+          bottom: 16,
+          child: Tooltip(
+            message: '전체 보기',
+            child: FloatingActionButton.small(
+              heroTag: 'graph-fit',
+              onPressed: _controller.zoomToFit,
+              child: const Icon(Icons.fit_screen_outlined),
+            ),
+          ),
+        ),
+      ],
     );
+  }
+}
+
+/// 엣지에 걸리지 않은 노드까지 그리게 하는 델리게이트.
+///
+/// graphview 1.5.1 의 `GraphChildDelegate.getVisibleGraphOnly()` 는 그릴 그래프를
+/// **엣지를 훑으며** 만든다.
+///
+/// ```dart
+/// for (final edge in graph.edges) { ... visibleGraph.addEdgeS(edge); }
+/// if (visibleGraph.nodes.isEmpty && graph.nodes.isNotEmpty) {
+///   visibleGraph.addNode(graph.nodes.first);   // 노드 1개짜리 응급 처치
+/// }
+/// ```
+///
+/// 그래서 엣지가 하나도 안 걸린 노드는 조용히 빠진다(위젯이 아예 만들어지지 않아
+/// 화면 밖으로 밀린 것과도 구분이 안 된다). 레이아웃 알고리즘 자체는 고립 노드를
+/// 잘 배치하므로 — Sugiyama 는 이들을 최상단 층에 나란히 놓는다 — 여기서 노드
+/// 목록만 채워 넣으면 된다.
+class _AllNodesDelegate extends gv.GraphChildDelegate {
+  _AllNodesDelegate({
+    required super.graph,
+    required super.algorithm,
+    required super.builder,
+    required super.controller,
+  });
+
+  @override
+  gv.Graph getVisibleGraphOnly() {
+    final visible = super.getVisibleGraphOnly();
+    for (final node in graph.nodes) {
+      // 상위 구현이 노드가 0개일 때 넣어 두는 응급 노드와 중복되지 않게 확인한다.
+      if (isNodeVisible(node) && !visible.nodes.contains(node)) {
+        visible.addNode(node);
+      }
+    }
+    return visible;
   }
 }
 
