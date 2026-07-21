@@ -14,11 +14,16 @@ export const PANEL_CSS = /* css */ `
 
 .root {
   --bg: #ffffff;
+  --surface: #FBFAF9;
   --fg: #1a1c1e;
   --muted: #6b7280;
-  --line: #e5e7eb;
-  --accent: #2563eb;
-  --accent-weak: #eff4ff;
+  --line: #ECE7E0;
+  --accent: #E63B5C;
+  --accent-weak: #FFE3E9;
+  --accent-soft: #E98BA0;
+  --accent-disabled: #E6D6DA;
+  --chip: #7A6A5D;
+  --chip-weak: #EFE8E0;
   --ok: #059669;
   --ok-weak: #ecfdf5;
   --bad: #dc2626;
@@ -50,17 +55,18 @@ export const PANEL_CSS = /* css */ `
   align-items: center;
   justify-content: space-between;
   padding: 14px 16px;
+  background: var(--surface);
   border-bottom: 1px solid var(--line);
   flex: 0 0 auto;
 }
 .brand { display: flex; align-items: center; gap: 8px; font-weight: 700; }
 .brand .dot {
-  width: 9px; height: 9px; border-radius: 50%;
-  background: var(--accent);
+  width: 20px; height: 20px; border-radius: 6px;
+  background: linear-gradient(135deg, #FF7A93, #E63B5C);
 }
 .progress { font-size: 12px; color: var(--muted); }
 .end-btn {
-  border: none; background: none; color: var(--muted);
+  border: none; background: none; color: var(--accent); font-weight: 700;
   font-size: 12px; cursor: pointer; padding: 4px 6px; border-radius: 6px;
 }
 .end-btn:hover { background: var(--accent-weak); color: var(--accent); }
@@ -70,6 +76,7 @@ export const PANEL_CSS = /* css */ `
   flex: 1 1 auto;
   overflow-y: auto;
   padding: 16px;
+  background: var(--surface);
 }
 
 /* ── IDLE 안내 ── */
@@ -91,18 +98,27 @@ export const PANEL_CSS = /* css */ `
 .ended .ended-note { font-size: 13px; color: var(--muted); }
 
 /* ── 개념 태그 / 레벨 배지 ── */
-.tags { display: flex; align-items: center; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
-.chip {
-  font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 999px;
-  background: var(--accent-weak); color: var(--accent);
+.tags {
+  display: flex; align-items: center; justify-content: center;
+  gap: 6px; margin-bottom: 12px; flex-wrap: wrap;
 }
-.chip.level { background: #f3f4f6; color: var(--muted); }
+.chip {
+  font-size: 11px; font-weight: 600; padding: 3px 9px;
+  border: 1px solid var(--line); border-radius: 20px;
+  background: var(--bg); color: var(--chip); text-align: center;
+}
+.chip.level { border: none; background: var(--surface); color: var(--accent-soft); }
 
 /* ── 질문 ── */
 .question {
   font-size: 15px; font-weight: 600; margin: 0 0 14px;
   line-height: 1.5;
+  text-align: center;
+  text-wrap: balance; /* 줄 길이를 고르게 — 마지막 줄에 몇 글자만 남는 것 방지 */
 }
+
+/* 선행 개념 레벨 배지 — 질문 아래 가운데 (재질문일 때만 렌더) */
+.level-row { text-align: center; margin: 0 0 14px; }
 
 /* ── 보기 ── */
 .options { display: flex; flex-direction: column; gap: 8px; }
@@ -141,7 +157,7 @@ export const PANEL_CSS = /* css */ `
   background: var(--accent); color: #fff;
   font: inherit; font-weight: 600; cursor: pointer;
 }
-.submit:disabled { background: #cbd5e1; cursor: not-allowed; }
+.submit:disabled { background: var(--accent-disabled); cursor: not-allowed; }
 
 /* ── 설명(오답 후) ── */
 .explain {

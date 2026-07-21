@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "demo": "vite --config vite.demo.config.ts",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
     "qa:anchor": "rolldown qa/anchor-qa.ts -o qa/dist/anchor-qa.mjs --format esm && node qa/dist/anchor-qa.mjs",

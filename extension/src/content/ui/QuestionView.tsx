@@ -45,10 +45,15 @@ export function QuestionView({ active, phase, onSubmit, onNext }: Props) {
     <div>
       <div className="tags">
         <span className="chip">{conceptLabel(active)}</span>
-        {level && <span className="chip level">{level}</span>}
       </div>
 
       <p className="question">{item.question}</p>
+
+      {level && (
+        <div className="level-row">
+          <span className="chip level">{level}</span>
+        </div>
+      )}
 
       <div className="options" role="listbox">
         {item.options.map((opt, i) => {
