@@ -95,7 +95,12 @@ python scripts/demo_flow.py   # 로그인 → 흐름 A → 흐름 B 엔드투엔
 키가 준비되면 `.env` 에 `ANTHROPIC_API_KEY` 를 넣고 `LLM_PROVIDER=claude` 로 바꾸기만 하면 된다.
 프롬프트·tool 스키마는 `app/domain/llm/prompts.py`.
 
-## 협의 필요 (담당2 ↔ 담당3)
+## 탈퇴 시 파기 규약 (담당2 ↔ 담당3, 해결됨)
 
-- 회원 탈퇴(`DELETE /auth/me`) 시 남은 `TempScrap` 삭제 훅/cascade 규약.
-  현재 `temp_scraps.user_id` 는 FK가 아니라 문자열이라 탈퇴 시 버퍼가 남는다.
+`temp_scraps.user_id` 는 FK가 아니라 문자열이라 DB cascade 가 걸리지 않는다.
+그래서 `auth/service.delete_user()` 가 **계정과 같은 트랜잭션에서** `TempScrap` 을
+직접 지운다(기획서 §6 '탈퇴 시 즉시 파기'). 회귀 테스트는 `tests/test_account_deletion.py`.
+
+> **도메인 테이블을 추가하면 `delete_user()` 에도 삭제를 함께 넣어야 한다.**
+> 빠뜨리면 탈퇴 후에도 기사 원문·답변 기록이 버퍼 TTL(기본 7일) 동안 서버에 남아
+> "원문을 서버에 보관하지 않는다"는 전제가 깨진다.
