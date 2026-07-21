@@ -1,9 +1,10 @@
-# Prober — 백엔드 서버 (담당2: 인증/계정)
+# Prober — 백엔드 서버
 
-FastAPI · PostgreSQL · SQLAlchemy 2.0(async) · Alembic · JWT
+FastAPI · PostgreSQL(pgvector) · SQLAlchemy 2.0(async) · Alembic · JWT
 
-담당2가 소유하는 **인증/계정 모듈**과, 담당3가 붙일 도메인 라우터가 **하나의 FastAPI 앱**을 공유한다.
-공유 자산(`Base`, `get_db`, `get_current_user`, 에러 포맷) 사용법은 [`app/domain/README.md`](app/domain/README.md) 참고.
+담당2의 **인증/계정 모듈**과 담당3의 **도메인 로직**(`/quiz`, `/scrap`, `/thoughtmap/update`)이
+**하나의 FastAPI 앱**을 공유한다. 공유 자산(`Base`, `get_db`, `get_current_user`, 에러 포맷)
+사용 규약은 [`app/domain/README.md`](app/domain/README.md) 참고.
 
 ## 구조
 
@@ -11,20 +12,26 @@ FastAPI · PostgreSQL · SQLAlchemy 2.0(async) · Alembic · JWT
 server/
 ├─ app/
 │  ├─ main.py            # FastAPI 앱, 라우터/에러/rate limit 등록
-│  ├─ core/              # 공유: 설정·DB·보안·인증의존성·에러·ratelimit
-│  │  ├─ config.py       # .env 로드
+│  ├─ core/              # 공유: 설정·DB·보안·인증의존성·에러·ratelimit·ID
+│  │  ├─ config.py       # .env 로드 (JWT · DB · LLM · 스크랩 버퍼 설정)
 │  │  ├─ db.py           # async engine, Base, get_db
 │  │  ├─ security.py     # bcrypt 해시 + JWT(HS256)
-│  │  ├─ deps.py         # get_current_user (담당3 재사용)
+│  │  ├─ deps.py         # get_current_user (도메인 라우트가 재사용)
 │  │  ├─ errors.py       # 통일 에러 포맷 {"error":{code,message}}
 │  │  ├─ ratelimit.py    # slowapi limiter
 │  │  └─ ids.py          # PK 생성기
 │  ├─ auth/              # 담당2: User 모델·스키마·서비스·라우터
-│  └─ domain/            # 담당3: quiz/scrap/thoughtmap (README만)
-├─ alembic/              # 마이그레이션 (async env)
-├─ alembic.ini
-├─ requirements.txt
-└─ .env.example
+│  └─ domain/            # 담당3: 도메인 로직
+│     ├─ models.py       # TempScrap, PartnerArticle
+│     ├─ schemas.py      # API 계약 (필드명 고정)
+│     ├─ quiz/           # 문단 분할 · LLM 출력 정규화/검증
+│     ├─ scrap/          # 버퍼 append · TTL/상한 정리
+│     ├─ thoughtmap/     # merge(순수) · recommend · service(트랜잭션)
+│     └─ llm/            # base(프로토콜) · mock · claude · prompts
+├─ alembic/              # 마이그레이션 (0001 users → 0002 도메인 테이블)
+├─ seed/                 # 제휴 기사 데이터셋
+├─ scripts/              # seed.py · demo_flow.py
+└─ tests/
 ```
 
 ## 실행 방법
@@ -38,32 +45,57 @@ pip install -r requirements.txt
 
 cp .env.example .env          # 값 채우기 (특히 JWT_SECRET)
 
+docker compose up -d          # pgvector/pgvector:pg16
 alembic upgrade head          # DB 스키마 생성
+python scripts/seed.py        # 제휴 기사 데이터셋 시드
 uvicorn app.main:app --reload # http://127.0.0.1:8000/docs
 ```
 
+```bash
+pytest                        # Postgres 없으면 DB 테스트는 자동 skip
+python scripts/demo_flow.py   # 로그인 → 흐름 A → 흐름 B 엔드투엔드
+```
+
 > **Postgres 없이 빠르게 확인**하려면 `.env` 의 `DATABASE_URL` 을
-> `sqlite+aiosqlite:///./prober_dev.db` 로 바꾸면 그대로 동작한다(스모크 테스트용).
+> `sqlite+aiosqlite:///./prober_dev.db` 로 바꾸면 인증 경로는 그대로 동작한다(스모크용).
+> 단 추천의 pgvector 유사도 검색(스트레치)은 Postgres 전용이다.
 
 ## API
 
-| 메서드 | 경로 | 요청 | 응답 |
-|---|---|---|---|
-| POST | `/auth/signup` | `{email, password, display_name?}` | `201 {userId}` |
-| POST | `/auth/login` | `{email, password, client?}` | `200 {accessToken, expiresIn, userId}` |
-| GET | `/auth/me` | Bearer | `200 {userId, email, displayName}` |
-| DELETE | `/auth/me` | Bearer | `204` |
-| GET | `/health` | – | `{status:"ok"}` |
+| 메서드 | 경로 | 호출자 | 요청 | 응답 |
+|---|---|---|---|---|
+| POST | `/auth/signup` | 공통 | `{email, password, display_name?}` | `201 {userId}` |
+| POST | `/auth/login` | 공통 | `{email, password, client?}` | `200 {accessToken, expiresIn, userId}` |
+| GET | `/auth/me` | 공통 | Bearer | `200 {userId, email, displayName}` |
+| DELETE | `/auth/me` | 공통 | Bearer | `204` |
+| POST | `/quiz` | 익스텐션 | `{articleTitle, articleBody}` | 재질문 트리 포함 퀴즈 전체 정보 (저장 안 함) |
+| POST | `/scrap` | 익스텐션 | `{articleTitle, articleBody, results[]}` | `201 {ok, buffered}` |
+| POST | `/thoughtmap/update` | 로컬앱 | `{graph, userContext}` | `{graph, recommendations, consumedScraps}` |
+| GET | `/health` | – | – | `{status:"ok"}` |
 
-- `client` 는 `"extension"` \| `"local"` (토큰 클레임에 기록, 권한 차이 없음).
+- 도메인 라우트는 전부 `Depends(get_current_user)` — 항상 `current_user.user_id` 기준으로만
+  조회/쓰기한다(계정 격리, 명세 §4.5).
 - 익스텐션·로컬 앱은 **각자 독립 로그인**(토큰 비공유), 동일 계정으로 서버에서 묶임.
-- `/auth/refresh` 는 데모 스코프에서 생략(설계 §3.3).
+- 에러 응답은 모두 `{"error": {"code": "...", "message": "..."}}`.
 
-에러 응답은 모두 `{"error": {"code": "...", "message": "..."}}` 형태.
+## 계약 메모 (담당1·로컬앱과 합의 사항)
 
-## 담당3 연동 요약
+- `/quiz`·`/scrap` 스키마는 구현계획① §5, 그래프 스키마는 로컬앱 `lib/data/dto/graph.dart`
+  와의 계약이다. 필드명(camelCase)을 바꾸면 양쪽이 깨진다.
+- `anchorText` 는 LLM 출력을 쓰지 않고 **서버가 해당 문단 앞 50자로 직접 채운다.**
+  익스텐션의 앵커 매칭 리스크(구현계획① §3.3)를 서버가 보증하기 위함이다.
+- 엣지 방향은 `from` = 선행 개념, `to` = 후행 개념. 스크랩의 `parentConcept` 가 후행이고
+  `conceptTag` 가 선행이다(재질문은 얕은 개념으로 내려가므로).
+- `/thoughtmap/update` 응답의 `recommendations` 는 `{concepts: [{concept, reason}],
+  articles: [{title, url, publisher, summary, matchedConcepts}]}`. 로컬앱 DTO에 아직 없으니 맞춰야 한다.
 
-1. 도메인 모델은 `from app.core.db import Base` 상속 → 같은 Alembic 체인.
-2. 라우트에 `Depends(get_current_user)` → `current_user.user_id` 로만 데이터 접근(계정 격리).
-3. 에러는 `raise AppError(status_code, code, message)`.
-4. `app/domain/router.py` 만들고 `main.py` 에 `include_router`.
+## LLM
+
+`LLM_PROVIDER=mock`(기본)이면 키 없이 전 구간이 결정론적으로 동작한다.
+키가 준비되면 `.env` 에 `ANTHROPIC_API_KEY` 를 넣고 `LLM_PROVIDER=claude` 로 바꾸기만 하면 된다.
+프롬프트·tool 스키마는 `app/domain/llm/prompts.py`.
+
+## 협의 필요 (담당2 ↔ 담당3)
+
+- 회원 탈퇴(`DELETE /auth/me`) 시 남은 `TempScrap` 삭제 훅/cascade 규약.
+  현재 `temp_scraps.user_id` 는 FK가 아니라 문자열이라 탈퇴 시 버퍼가 남는다.

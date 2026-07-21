@@ -10,8 +10,7 @@ from app.core.db import Base
 
 # --- 모델 import: Base.metadata 에 테이블이 등록되도록 반드시 import ---
 from app.auth import models as _auth_models  # noqa: F401,E402
-# 담당3 도메인 모델도 여기에 추가하세요 (autogenerate 인식용):
-# from app.domain import models as _domain_models  # noqa: F401
+from app.domain import models as _domain_models  # noqa: F401,E402
 
 config = context.config
 if config.config_file_name is not None:
