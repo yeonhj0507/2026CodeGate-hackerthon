@@ -216,4 +216,76 @@ void main() {
       expect((await repo.loadXp()).streak, 0);
     });
   });
+
+  group('화면 효과 판정', () {
+    XpEvent event(XpKind kind, String key) =>
+        XpEvent.of(kind, dedupeKey: key, detail: '');
+
+    test('재도전 성공·기사 잇기만 축하 이벤트다', () {
+      expect(XpKind.retrySuccess.isCelebration, isTrue);
+      expect(XpKind.crossArticleLink.isCelebration, isTrue);
+      expect(XpKind.correctAnswer.isCelebration, isFalse);
+      expect(XpKind.followupCompleted.isCelebration, isFalse);
+      expect(XpKind.understoodTransition.isCelebration, isFalse);
+      expect(XpKind.articleCompleted.isCelebration, isFalse);
+      expect(XpKind.streakDay.isCelebration, isFalse);
+    });
+
+    test('이전 스냅샷에 없던 이벤트만 "새로 도착"으로 본다', () {
+      final before = XpSnapshot(
+        total: 10,
+        recent: [event(XpKind.correctAnswer, 'a')],
+      );
+      final after = XpSnapshot(
+        total: 25,
+        recent: [
+          event(XpKind.correctAnswer, 'b'), // 새로 옴
+          event(XpKind.correctAnswer, 'a'), // 이전에도 있었다
+        ],
+      );
+
+      final arrived = newlyArrivedEvents(before, after);
+
+      expect(arrived.map((e) => e.dedupeKey), ['b']);
+    });
+
+    test('이전 스냅샷이 없으면(첫 로드) 전부 새로 도착한 것으로 본다', () {
+      final after = XpSnapshot(
+        recent: [event(XpKind.correctAnswer, 'a')],
+      );
+
+      // 이 함수 자체는 그대로 전부를 "새로 도착"으로 낸다 — 맞는 동작이다.
+      // 문제는 호출부(XpBadge)가 이걸 곧이곧대로 축하 트리거로 쓰면 안 된다는
+      // 것: XpController는 XpSnapshot.empty로 시작해 refresh()가 끝나야
+      // 실제 값을 받으므로, 그 첫 전환에서 이 함수를 그대로 믿으면 과거 이력
+      // 전체가 "방금 얻었다"로 오인된다. 그래서 XpBadge는 prev가
+      // XpSnapshot.empty(첫 로드의 시작점)일 때는 이 함수의 결과를 아예
+      // 쓰지 않고 건너뛴다 — 그 가드는 여기가 아니라 xp_panel.dart에 있다.
+      final arrived = newlyArrivedEvents(null, after);
+
+      expect(arrived.map((e) => e.dedupeKey), ['a']);
+    });
+
+    test('아무것도 새로 오지 않으면 빈 목록이다', () {
+      final snapshot = XpSnapshot(recent: [event(XpKind.correctAnswer, 'a')]);
+
+      expect(newlyArrivedEvents(snapshot, snapshot), isEmpty);
+    });
+
+    test('동기화 한 번에 여러 건이 와도 전부 잡는다', () {
+      final before = const XpSnapshot(recent: []);
+      final after = XpSnapshot(
+        recent: [
+          event(XpKind.retrySuccess, 'r1'),
+          event(XpKind.crossArticleLink, 'x1'),
+          event(XpKind.correctAnswer, 'c1'),
+        ],
+      );
+
+      final arrived = newlyArrivedEvents(before, after);
+
+      expect(arrived, hasLength(3));
+      expect(arrived.any((e) => e.kind?.isCelebration ?? false), isTrue);
+    });
+  });
 }

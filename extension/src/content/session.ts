@@ -30,6 +30,7 @@ import type {
   ScrapResult,
 } from '../shared/types'
 import { MAX_FOLLOWUP_LEVEL } from '../shared/constants'
+import { useXpToast, XP_TOAST_CORRECT, XP_TOAST_FOLLOWUP } from './xp-toast'
 
 // ─── 내부 상태 (SessionStore에 노출하지 않음, UI는 구독하지 않는다) ───────────
 
@@ -104,6 +105,16 @@ export const useSession = create<Store>((set, get) => ({
       results: [...results, result],
       phase: correct ? 'SHOW_CORRECT' : 'SHOW_EXPLANATION',
     })
+
+    // XP 토스트 — local_app의 evaluateGraphXp 배점과 같은 갈래로 나눈다
+    // (xp_rules.dart 주석 그대로): level 0 정답 = correctAnswer, 재질문(레벨
+    // 무관, 오답이어도) = followupCompleted. level 0 오답은 여기서 아무것도
+    // 안 준다 — 선행으로 내려가 답해야 그때 followupCompleted가 뜬다.
+    if (active.level === 0) {
+      if (correct) useXpToast.getState().push(XP_TOAST_CORRECT.amount, XP_TOAST_CORRECT.label)
+    } else {
+      useXpToast.getState().push(XP_TOAST_FOLLOWUP.amount, XP_TOAST_FOLLOWUP.label)
+    }
   },
 
   /**

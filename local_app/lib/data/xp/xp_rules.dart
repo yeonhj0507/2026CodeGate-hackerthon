@@ -48,6 +48,15 @@ enum XpKind {
   final String label;
   final String description;
 
+  /// 화면 효과를 화려하게 켤 이벤트인지.
+  ///
+  /// 모든 이벤트를 다 화려하게 하면 하루에도 여러 번 뜨는 정답 알림까지
+  /// 피로해진다. 그래서 드물고 배점 큰 두 가지만 켠다 — 재도전 성공은
+  /// 프로버 서사의 클라이맥스(선행을 뚫고 원래 막힌 주장을 정복)이고,
+  /// 기사 잇기는 다른 서비스가 못 주는 크로스기사 연결의 순간이다.
+  bool get isCelebration =>
+      this == XpKind.retrySuccess || this == XpKind.crossArticleLink;
+
   /// 저장된 문자열 → enum. 모르는 값이면 null(구버전 DB를 깨뜨리지 않는다).
   static XpKind? tryParse(String raw) {
     for (final k in values) {
@@ -261,4 +270,21 @@ class XpSnapshot {
   int get toNextLevel => xpPerLevel - intoLevel;
 
   double get levelProgress => intoLevel / xpPerLevel;
+}
+
+/// 이전 스냅샷과 비교해 **새로 나타난** 이벤트만 뽑는다.
+///
+/// `XpSnapshot`은 지금 상태의 스냅샷일 뿐 델타를 담지 않는다. 그런데 배지가
+/// "방금 무엇이 들어왔는지"(count-up을 켤지, 축하 효과를 켤지)를 판단하려면
+/// 델타가 필요하다. `recent`는 최신순 상위 N개라, [dedupeKey]가 이전 스냅샷의
+/// `recent`에 없으면 이번에 처음 보인 것이다.
+///
+/// 동기화(여러 건 한꺼번에)든 OX 퀴즈·접속 스트릭(한 건씩)이든 같은 함수로
+/// 처리된다 — XP가 쌓이는 경로는 여럿이어도 "새로 들어온 걸 찾는다"는 하나다.
+List<XpEvent> newlyArrivedEvents(XpSnapshot? previous, XpSnapshot next) {
+  final known = {for (final e in previous?.recent ?? const []) e.dedupeKey};
+  return [
+    for (final e in next.recent)
+      if (!known.contains(e.dedupeKey)) e,
+  ];
 }

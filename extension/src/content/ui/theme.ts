@@ -147,6 +147,52 @@ ${FONT_IMPORTS}
   @keyframes prober-pulse { 50% { opacity: 0.35; } }
 }
 
+/* ── XP 토스트 ── */
+/* 정답·재질문 완주 즉시 뜨는 "+N XP". .root가 position:fixed라 그 자체가
+   포지셔닝 컨텍스트다 — 별도로 relative를 걸 필요가 없다. */
+.xp-toast-layer {
+  position: absolute;
+  top: 58px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+}
+.xp-toast {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+  animation: prober-xp-toast 1.6s ease-out forwards;
+}
+.xp-toast .xp-amount { font-weight: 700; font-size: 13px; }
+.xp-toast .xp-label { font-weight: 600; font-size: 11.5px; opacity: 0.9; }
+
+@keyframes prober-xp-toast {
+  0%   { opacity: 0; transform: translateY(6px) scale(0.9); }
+  12%  { opacity: 1; transform: translateY(0) scale(1.05); }
+  20%  { transform: translateY(0) scale(1); }
+  75%  { opacity: 1; transform: translateY(-4px) scale(1); }
+  100% { opacity: 0; transform: translateY(-26px) scale(0.96); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .xp-toast { animation: prober-xp-toast-fade 1.6s ease-out forwards; }
+  @keyframes prober-xp-toast-fade {
+    0% { opacity: 0; }
+    15%, 75% { opacity: 1; }
+    100% { opacity: 0; }
+  }
+}
+
 /* ── 학습 종료(ended) ── */
 .ended .ended-title { font-weight: 700; font-size: 16px; color: var(--fg); }
 .ended .summary {

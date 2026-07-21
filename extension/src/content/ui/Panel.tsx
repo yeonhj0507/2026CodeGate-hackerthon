@@ -11,6 +11,7 @@ import { useQuizFeed } from '../quiz-feed'
 import { useSession } from '../session'
 import { ProberLogo } from './ProberLogo'
 import { QuestionView } from './QuestionView'
+import { XpToastLayer } from './XpToastLayer'
 
 interface Props {
   /** "학습 종료" 클릭 시 호출. 미주입 시 flushResults만 수행(mock). */
@@ -47,6 +48,7 @@ export function Panel({ onEnd }: Props) {
 
   return (
     <div className="root">
+      <XpToastLayer />
       <header className="header">
         <div className="brand">
           <ProberLogo size={20} />

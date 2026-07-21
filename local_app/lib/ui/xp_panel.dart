@@ -5,67 +5,128 @@ import '../data/xp/xp_rules.dart';
 import '../providers/providers.dart';
 import 'app_colors.dart';
 import 'widgets/panel_header.dart';
+import 'widgets/xp_burst.dart';
 
 /// 상단바에 붙는 XP 배지. 누르면 상세가 열린다.
+///
+/// **XP가 쌓이는 모든 경로가 여기 하나로 모인다.** 동기화·OX 퀴즈 정답·접속
+/// 스트릭 전부 결국 [xpProvider]를 갱신하고 끝나므로(providers.dart 참고),
+/// 효과도 호출부마다 넣지 않고 이 배지 하나에만 건다 — 어디서 XP가 들어와도
+/// 숫자가 카운트업되고, 재도전 성공·기사 잇기처럼 큰 사건이면 반짝인다.
 ///
 /// 색을 상단바 배경에 기대지 않고 [AppColors.pinkBg] 위에 얹은 이유:
 /// 홈 상단바는 아직 구(舊) 다크 색이 남아 있고 라이트 팔레트 이관이 진행 중이라,
 /// 어느 쪽 배경에서도 읽히는 자립형 칩으로 둔다.
-class XpBadge extends ConsumerWidget {
+class XpBadge extends ConsumerStatefulWidget {
   const XpBadge({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<XpBadge> createState() => _XpBadgeState();
+}
+
+class _XpBadgeState extends ConsumerState<XpBadge> {
+  /// count-up 애니메이션의 출발점. [XpSnapshot.total]이 늘어도 바로 따라잡지
+  /// 않고, `TweenAnimationBuilder`가 이 값에서 새 값까지 눈에 보이게 센 뒤에만
+  /// 갱신한다(`onEnd`).
+  int _lastTotal = 0;
+
+  /// 값이 바뀔 때마다 [XpBurst]를 새로 재생시키는 트리거.
+  int _burstTrigger = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _lastTotal = ref.read(xpProvider).total;
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final xp = ref.watch(xpProvider);
+
+    // 총량이 바뀔 때만 반응한다 — recent 목록 갱신 등 다른 필드 변화로
+    // 불필요하게 재생되지 않게.
+    ref.listen<XpSnapshot>(
+      xpProvider,
+      (prev, next) {
+        if (next.total == prev?.total) return;
+        // XpController는 XpSnapshot.empty로 시작해 refresh()가 끝나야 저장된
+        // 값을 받는다(providers.dart). 그 첫 전환(empty → 실제 값)은 "방금
+        // 얻었다"가 아니라 "과거 이력을 막 읽어 왔다"이므로 축하하지 않는다 —
+        // 안 그러면 재도전 성공 이력이 있는 사용자는 앱을 켤 때마다 폭죽이 튄다.
+        if (prev == null || identical(prev, XpSnapshot.empty)) return;
+        final arrived = newlyArrivedEvents(prev, next);
+        final celebrate =
+            arrived.any((e) => e.kind?.isCelebration ?? false);
+        if (celebrate) setState(() => _burstTrigger++);
+      },
+    );
 
     return Tooltip(
       message: '경험치 — 눌러서 내역 보기',
       child: InkWell(
         borderRadius: BorderRadius.circular(999),
         onTap: () => showXpSheet(context),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
-          decoration: BoxDecoration(
-            color: AppColors.pinkBg,
-            borderRadius: BorderRadius.circular(999),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.bolt, size: 15, color: AppColors.pink),
-              const SizedBox(width: 4),
-              Text(
-                'Lv.${xp.level}',
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.pink,
-                ),
+        child: Stack(
+          alignment: Alignment.center,
+          clipBehavior: Clip.none,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
+              decoration: BoxDecoration(
+                color: AppColors.pinkBg,
+                borderRadius: BorderRadius.circular(999),
               ),
-              const SizedBox(width: 7),
-              Text(
-                '${xp.total} XP',
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: AppColors.pinkMuted,
-                ),
-              ),
-              if (xp.streak > 0) ...[
-                const SizedBox(width: 8),
-                const Icon(Icons.local_fire_department,
-                    size: 14, color: AppColors.pinkStrong),
-                const SizedBox(width: 2),
-                Text(
-                  '${xp.streak}',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.pinkStrong,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.bolt, size: 15, color: AppColors.pink),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Lv.${xp.level}',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.pink,
+                    ),
                   ),
-                ),
-              ],
-            ],
-          ),
+                  const SizedBox(width: 7),
+                  TweenAnimationBuilder<int>(
+                    tween: IntTween(begin: _lastTotal, end: xp.total),
+                    duration: const Duration(milliseconds: 700),
+                    curve: Curves.easeOutCubic,
+                    onEnd: () {
+                      // 다음 변화가 여기서부터 다시 세어 나가도록 고정한다.
+                      // setState 없이 값만 갱신 — 이 프레임에서 다시 그릴
+                      // 이유가 없다(이미 최종값을 보여준 상태).
+                      _lastTotal = xp.total;
+                    },
+                    builder: (context, value, _) => Text(
+                      '$value XP',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AppColors.pinkMuted,
+                      ),
+                    ),
+                  ),
+                  if (xp.streak > 0) ...[
+                    const SizedBox(width: 8),
+                    const Icon(Icons.local_fire_department,
+                        size: 14, color: AppColors.pinkStrong),
+                    const SizedBox(width: 2),
+                    Text(
+                      '${xp.streak}',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.pinkStrong,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            XpBurst(trigger: _burstTrigger),
+          ],
         ),
       ),
     );
