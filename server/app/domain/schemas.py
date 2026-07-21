@@ -105,6 +105,14 @@ class GraphNode(Strict):
     sourceArticles: list[SourceArticle] = Field(default_factory=list)
     summaryMeta: str | None = None
 
+    # 그래프 시각화 노출 여부(명세 §4.4·§7). 확장 후보를 "수락 전 비노출"로 두기 위한 필드다.
+    #
+    # 다만 현재 확장 신호(재도전·형제)는 **사용자가 이미 퀴즈로 만난 노드**만 고르므로,
+    # 후보로 뽑혔다고 false 로 강등하면 보던 노드가 사라지는 UX 가 된다. 그래서 서버는
+    # 한 번 true 인 노드를 되돌리지 않고(단조 증가), 결과적으로 현재는 항상 true 다.
+    # 그래프에 없던 개념을 후보로 만드는 신호가 생기면 그때 false 가 의미를 갖는다.
+    promoted: bool = True
+
 
 class GraphEdge(Strict):
     # `from` 은 파이썬 예약어라 필드명은 from_ 이고 JSON 키만 "from" 이다.
@@ -140,8 +148,27 @@ class ThoughtmapUpdateRequest(Strict):
 
 
 class ConceptRecommendation(Strict):
-    concept: str
+    """결핍 보완 추천 — "모를 것 같은 개념"(명세 §4.4).
+
+    `conceptId` 는 그래프 노드 id(정규화 키)라 로컬앱이 그래프에서 위치를 짚을 수 있다.
+    """
+
+    conceptId: str
+    conceptTag: str
     reason: str
+
+
+class ExpansionConcept(Strict):
+    """확장 추천 — 이해완료를 발판 삼은 심화(명세 §4.4, 신규).
+
+    `reason` 은 자연어가 아니라 신호 종류다. 사용자에게 보일 문구 매핑은 로컬앱 소관.
+    - retry:   선행을 이해했으니 원래 주장에 다시 도전
+    - sibling: 같은 상위 개념을 공유하는 옆 갈래
+    """
+
+    conceptId: str
+    conceptTag: str
+    reason: Literal["retry", "sibling"]
 
 
 class ArticleRecommendation(Strict):
@@ -153,7 +180,8 @@ class ArticleRecommendation(Strict):
 
 
 class Recommendations(Strict):
-    concepts: list[ConceptRecommendation] = Field(default_factory=list)
+    gapConcepts: list[ConceptRecommendation] = Field(default_factory=list)
+    expansionConcepts: list[ExpansionConcept] = Field(default_factory=list)
     articles: list[ArticleRecommendation] = Field(default_factory=list)
 
 

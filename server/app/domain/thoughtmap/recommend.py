@@ -1,7 +1,10 @@
 """추천 생성 (명세 §4.4).
 
-- 모를 것 같은 개념: 미이해 노드와 그 인접(선행) 개념 중 아직 확인되지 않은 것.
-- 읽을 만한 기사: 추천 개념 + 사용자 기사 선호 패턴으로 제휴 데이터셋을 랭킹.
+세 갈래를 낸다.
+
+- **결핍 보완(gap):** 미이해 노드와 그 인접(선행) 개념 중 아직 확인되지 않은 것.
+- **확장(expansion):** 이해완료를 발판 삼은 심화. **LLM 을 쓰지 않고 그래프 구조만으로** 뽑는다.
+- **읽을 만한 기사:** 위 두 갈래를 모두 근거로 제휴 데이터셋을 랭킹.
 """
 
 from sqlalchemy import select
@@ -10,9 +13,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.domain.models import PartnerArticle
 from app.domain.schemas import (
     STATE_NOT_UNDERSTOOD,
+    STATE_UNDERSTOOD,
     STATE_UNKNOWN,
     ArticleRecommendation,
     ConceptRecommendation,
+    ExpansionConcept,
     Graph,
     Recommendations,
     UserContext,
@@ -20,10 +25,12 @@ from app.domain.schemas import (
 from app.domain.thoughtmap.merge import normalize_concept
 
 MAX_CONCEPTS = 8
+MAX_EXPANSION = 5
 MAX_ARTICLES = 5
 
 
-def recommend_concepts(graph: Graph) -> list[ConceptRecommendation]:
+def recommend_gap_concepts(graph: Graph) -> list[ConceptRecommendation]:
+    """모를 것 같은 개념 — 미이해를 메우는 방향."""
     by_id = {n.id: n for n in graph.nodes}
     not_understood = {n.id for n in graph.nodes if n.state == STATE_NOT_UNDERSTOOD}
 
@@ -39,12 +46,13 @@ def recommend_concepts(graph: Graph) -> list[ConceptRecommendation]:
 
     for edge in graph.edges:
         # from = 선행 개념. 후행을 모른다면 그 선행부터 확인할 가치가 있다.
+        # 단 **이미 이해완료한 선행은 결핍이 아니다** — 그건 확장 추천(형제 신호) 소관이다.
         if edge.to in not_understood:
             state = by_id[edge.from_].state if edge.from_ in by_id else STATE_UNKNOWN
-            if state != STATE_NOT_UNDERSTOOD:
+            if state == STATE_UNKNOWN:
                 bump(
                     edge.from_,
-                    3 if state == STATE_UNKNOWN else 1,
+                    3,
                     f"'{by_id[edge.to].concept}'을(를) 이해하려면 먼저 짚어야 하는 선행 개념이다.",
                 )
 
@@ -62,21 +70,79 @@ def recommend_concepts(graph: Graph) -> list[ConceptRecommendation]:
 
     ordered = sorted(scored.items(), key=lambda kv: (-kv[1][0], by_id[kv[0]].concept))
     return [
-        ConceptRecommendation(concept=by_id[node_id].concept, reason=reason)
+        ConceptRecommendation(
+            conceptId=node_id, conceptTag=by_id[node_id].concept, reason=reason
+        )
         for node_id, (_, reason) in ordered[:MAX_CONCEPTS]
     ]
 
 
+def recommend_expansion_concepts(graph: Graph) -> list[ExpansionConcept]:
+    """확장 개념 — 이해완료를 발판 삼은 심화 (명세 §4.4, 구현계획③ §2.3-5).
+
+    두 신호를 쓰며 **Claude 호출이 없다**. 순수 그래프 쿼리다.
+
+    1. 재도전(주): 엣지 `C→M` 에서 C(선행)는 이해완료인데 M(후행)이 미이해로 남은 경우.
+       오답 → 선행으로 내려가 선행만 맞힌 케이스를 되짚어 "이제 M에 다시 도전"을 권한다.
+    2. 형제(보조): 같은 후행 M 을 공유하는 선행들 중 하나가 이해완료라면, 아직 이해완료가
+       아닌 나머지 형제를 권한다.
+
+    오답·역탐색 이력이 없는 초반(콜드스타트)에는 빈 목록이 나오며, 그것이 정상 동작이다.
+    """
+    by_id = {n.id: n for n in graph.nodes}
+
+    def state_of(node_id: str) -> str | None:
+        node = by_id.get(node_id)
+        return node.state if node else None
+
+    picked: dict[str, ExpansionConcept] = {}
+
+    # (1) 재도전 — 주 신호라 먼저 채운다.
+    for edge in graph.edges:
+        if state_of(edge.from_) == STATE_UNDERSTOOD and state_of(edge.to) == STATE_NOT_UNDERSTOOD:
+            picked.setdefault(
+                edge.to,
+                ExpansionConcept(
+                    conceptId=edge.to, conceptTag=by_id[edge.to].concept, reason="retry"
+                ),
+            )
+
+    # (2) 형제 — 후행별로 선행을 모아, 이해완료가 하나라도 있으면 나머지를 권한다.
+    prereqs_by_parent: dict[str, list[str]] = {}
+    for edge in graph.edges:
+        if edge.from_ in by_id and edge.to in by_id:
+            prereqs_by_parent.setdefault(edge.to, []).append(edge.from_)
+
+    for siblings in prereqs_by_parent.values():
+        if not any(state_of(s) == STATE_UNDERSTOOD for s in siblings):
+            continue
+        for sibling in siblings:
+            if state_of(sibling) != STATE_UNDERSTOOD:
+                picked.setdefault(
+                    sibling,
+                    ExpansionConcept(
+                        conceptId=sibling,
+                        conceptTag=by_id[sibling].concept,
+                        reason="sibling",
+                    ),
+                )
+
+    # 재도전이 먼저 오도록 정렬한 뒤 상한을 건다.
+    ordered = sorted(picked.values(), key=lambda e: (e.reason != "retry", e.conceptTag))
+    return ordered[:MAX_EXPANSION]
+
+
 async def recommend_articles(
     db: AsyncSession,
-    concepts: list[ConceptRecommendation],
+    concepts: list[str],
     context: UserContext,
 ) -> list[ArticleRecommendation]:
+    """읽을 만한 기사 — 결핍 보완 + 확장 개념 모두를 근거로 랭킹한다(명세 §4.4)."""
     rows = (await db.execute(select(PartnerArticle))).scalars().all()
     if not rows:
         return []
 
-    wanted = {normalize_concept(c.concept): rank for rank, c in enumerate(concepts)}
+    wanted = {normalize_concept(c): rank for rank, c in enumerate(concepts)}
     preferred_categories = {c.strip().lower() for c in context.preferredCategories if c.strip()}
     preferred_keywords = {normalize_concept(k) for k in context.preferredKeywords if k.strip()}
 
@@ -113,6 +179,14 @@ async def recommend_articles(
 async def build_recommendations(
     db: AsyncSession, graph: Graph, context: UserContext
 ) -> Recommendations:
-    concepts = recommend_concepts(graph)
-    articles = await recommend_articles(db, concepts, context)
-    return Recommendations(concepts=concepts, articles=articles)
+    expansion = recommend_expansion_concepts(graph)
+
+    # 같은 개념이 두 섹션에 동시에 뜨면 사용자가 혼란스럽다. 확장 쪽 안내가 더 구체적이므로
+    # (무엇을 발판으로 어디로 가라) 겹치는 개념은 결핍 목록에서 뺀다.
+    expanded_ids = {e.conceptId for e in expansion}
+    gap = [c for c in recommend_gap_concepts(graph) if c.conceptId not in expanded_ids]
+
+    articles = await recommend_articles(
+        db, [c.conceptTag for c in gap] + [e.conceptTag for e in expansion], context
+    )
+    return Recommendations(gapConcepts=gap, expansionConcepts=expansion, articles=articles)

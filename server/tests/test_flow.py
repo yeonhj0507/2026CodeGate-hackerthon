@@ -103,7 +103,9 @@ async def test_recommendations_use_partner_dataset(client):
         },
     )
     rec = res.json()["recommendations"]
-    assert "기준금리" in {c["concept"] for c in rec["concepts"]}
+    assert "기준금리" in {c["conceptTag"] for c in rec["gapConcepts"]}
+    # 첫 동기화라 이해완료가 없다 → 확장 후보 0건이 정상(콜드스타트, 명세 §4.4).
+    assert rec["expansionConcepts"] == []
 
     # 시드 데이터셋의 conceptTags 와 매칭되어 기사가 추천된다.
     assert rec["articles"], "제휴 기사 시드가 필요하다 (python scripts/seed.py)"
@@ -111,6 +113,41 @@ async def test_recommendations_use_partner_dataset(client):
         assert article["url"].startswith("http")
     # 개념이 매칭된 기사가 선호 카테고리만 맞은 기사보다 먼저 온다.
     assert rec["articles"][0]["matchedConcepts"]
+
+
+async def test_expansion_recommends_retry_after_prereq_recovered(client):
+    """오답 → 선행개념으로 내려가 선행만 맞힌 뒤, 원래 주장을 다시 권하는 흐름(명세 §4.4)."""
+    await client.post(
+        "/scrap",
+        json={
+            "articleUrl": "https://news.example.com/econ/rate",
+            "articleTitle": "금리 기사",
+            "results": [
+                # 본문 주장은 틀렸고, 내려간 선행개념은 맞혔다.
+                {"conceptTag": "기준금리", "parentConcept": None, "level": 0, "correct": False},
+                {
+                    "conceptTag": "통화정책",
+                    "parentConcept": "기준금리",
+                    "level": 1,
+                    "correct": True,
+                },
+            ],
+        },
+    )
+
+    body = (
+        await client.post("/thoughtmap/update", json={"graph": {"nodes": [], "edges": []}})
+    ).json()
+    rec = body["recommendations"]
+
+    retry = [e for e in rec["expansionConcepts"] if e["reason"] == "retry"]
+    assert [e["conceptTag"] for e in retry] == ["기준금리"]
+
+    # 확장으로 뽑힌 개념은 결핍 목록에 중복 등장하지 않는다.
+    assert "기준금리" not in {c["conceptTag"] for c in rec["gapConcepts"]}
+
+    # 노드는 강등되지 않는다 — promoted 는 단조 증가.
+    assert all(n["promoted"] is True for n in body["graph"]["nodes"])
 
 
 async def test_user_isolation(client, other_client):
