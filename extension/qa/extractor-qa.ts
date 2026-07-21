@@ -181,12 +181,22 @@ console.log('='.repeat(78))
 
 // ─── 페이지 게이트: 언론사 메인/섹션에서 패널이 뜨지 않아야 한다 ───────────────
 
-/** 목록 페이지형: 기사 카드마다 부모가 다르다(실측 부모종류/문단 0.50~1.00). */
+/** 목록 페이지형: 카드마다 서로 다른 기사 링크를 품는다(실측 링크비 0.50~1.00). */
 function listPageLike(): Document {
   const cards = BODY_SENTENCES.map(
     (s, i) => `<div class="card"><a href="/article/${1000 + i}"><h3>제목 ${i}</h3></a><p class="lead">${s}</p></div>`,
   ).join('\n')
   return html(`<div id="content">${cards}</div>`)
+}
+
+/**
+ * 매일경제형 기사: 문단마다 wrapper div 가 따로 있어 부모 종류가 문단 수만큼 많다.
+ * 예전 "부모 종류 비율" 규칙이 이걸 목록으로 오판해 기사에서 패널이 사라졌었다.
+ * 링크가 없으므로 링크 신호로는 기사로 올바르게 판정되어야 한다.
+ */
+function perParagraphWrapperArticle(): Document {
+  const body = BODY_SENTENCES.map((s) => `<div class="para"><p>${s}</p></div>`).join('\n')
+  return html(`<article id="article_body">${body}</article>`)
 }
 
 console.log('\n[페이지 게이트 — URL]')
@@ -209,9 +219,13 @@ console.log('\n[페이지 게이트 — 구조]')
   const article = extractArticle(naverLike())
   const yonhap = extractArticle(yonhapLike())
 
+  const wrapped = extractArticle(perParagraphWrapperArticle())
+
   check('목록형은 목록으로 판정', looksLikeArticleList(list?.paragraphs ?? []), true)
   check('네이버형 기사는 통과', looksLikeArticleList(article?.paragraphs ?? []), false)
   check('연합형 기사는 통과', looksLikeArticleList(yonhap?.paragraphs ?? []), false)
+  // 회귀: 문단마다 wrapper div 가 있는 기사(매일경제형)를 목록으로 오판하면 안 된다.
+  check('문단별 wrapper 기사는 통과', looksLikeArticleList(wrapped?.paragraphs ?? []), false)
   check('문단 적으면 판정 보류', looksLikeArticleList((article?.paragraphs ?? []).slice(0, 4)), false)
 }
 
