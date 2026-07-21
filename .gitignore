@@ -1,0 +1,17 @@
+# 의존성 / 빌드 산출물
+node_modules/
+dist/
+.vite/
+qa/dist/
+
+# 로컬 환경변수 (예시 파일 .env.example은 커밋)
+.env
+*.local
+
+# OS / 에디터
+.DS_Store
+Thumbs.db
+*.log
+
+# 기획서 원본(구글드라이브) — 레포 미포함
+claude_readthis_product_summary.pdf
