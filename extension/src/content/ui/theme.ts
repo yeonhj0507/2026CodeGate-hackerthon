@@ -209,6 +209,11 @@ ${FONT_IMPORTS}
   font-weight: 700; color: var(--bad); margin-bottom: 6px; font-size: 13px;
 }
 .explain .text { color: var(--fg); font-size: 13.5px; }
+.explain.explain-ok {
+  border-color: var(--ok-weak);
+  background: var(--ok-weak);
+}
+.explain.explain-ok .banner { color: var(--ok); }
 .next-btn {
   margin-top: 14px; width: 100%;
   padding: 11px 14px; border: none; border-radius: 10px;

@@ -65,12 +65,17 @@ check(
 check('level 기록 = 0,1,2', s().results.map((r) => r.level).join(',') === '0,1,2')
 check('전부 오답 기록', s().results.every((r) => !r.correct) && s().results.length === 3)
 
-// ─── 2) 정답이면 즉시 IDLE(재질문 안 탐) + flush 멱등 ────────────────────────
+// ─── 2) 정답도 채점된 보기를 보여준 뒤 dismiss해야 IDLE(재질문은 안 탐) + flush 멱등 ──
 
 reset()
 s().startQuestion(QMAIN)
 s().submitAnswer(1) // 정답
-check('main 정답 → IDLE(재질문 스킵)', s().phase === 'IDLE' && s().active === null)
+check(
+  'main 정답 → SHOW_CORRECT(채점된 보기 유지, active 그대로)',
+  s().phase === 'SHOW_CORRECT' && s().active?.quiz.claimId === 'c2',
+)
+s().dismissExplanation()
+check('정답 확인 후 dismiss → IDLE(재질문 스킵)', s().phase === 'IDLE' && s().active === null)
 const only = s().results[0]
 check(
   '결과 1건 correct/level0/parent null',
@@ -108,15 +113,19 @@ q.enqueue([QSOLO])
 check('enqueue 즉시 제시(IDLE였으므로)', s().phase === 'ASKING' && s().active?.quiz.claimId === 'c1')
 q.enqueue([QMAIN, QX]) // 풀이 중 2건 진입(한 문단 다중 상당) → 대기
 check('풀이 중 enqueue는 대기(현재 문항 유지)', s().active?.quiz.claimId === 'c1')
-s().submitAnswer(0) // QSOLO 정답 → IDLE → pump
+s().submitAnswer(0) // QSOLO 정답 → SHOW_CORRECT
+s().dismissExplanation() // 확인 후 dismiss → IDLE → pump
 check('앞 문항 종료 후 다음(QMAIN) 순차 제시', s().active?.quiz.claimId === 'c2')
-s().submitAnswer(1) // QMAIN 정답 → pump
+s().submitAnswer(1) // QMAIN 정답 → SHOW_CORRECT
+s().dismissExplanation() // → IDLE → pump
 check('그 다음(QX) 순차 제시 — 유실 없음', s().active?.quiz.claimId === 'c3')
-s().submitAnswer(0) // QX 정답 → 큐 소진 → IDLE
+s().submitAnswer(0) // QX 정답 → SHOW_CORRECT
+s().dismissExplanation() // → 큐 소진 → IDLE
 check('큐 소진 후 IDLE', s().phase === 'IDLE' && s().active === null)
 q.dispose()
 q.enqueue([QSOLO]) // dispose 후에도 enqueue는 IDLE이라 즉시 pump는 되지만,
-s().submitAnswer(0) // 이후 IDLE 복귀 시 자동 pump는 없어야 함(구독 해제)
+s().submitAnswer(0)
+s().dismissExplanation() // 이후 IDLE 복귀 시 자동 pump는 없어야 함(구독 해제)
 q.enqueue([QMAIN])
 check('dispose 후: IDLE 복귀 자동 pump 없음(수동 enqueue만 즉시 반영)', s().active?.quiz.claimId === 'c2')
 

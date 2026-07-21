@@ -153,7 +153,7 @@ export interface ActiveQuestion {
 
 /** session.ts가 ui/에 노출하는 상태 (zustand store shape). */
 export interface SessionStore {
-  phase: 'IDLE' | 'ASKING' | 'SHOW_EXPLANATION'
+  phase: 'IDLE' | 'ASKING' | 'SHOW_EXPLANATION' | 'SHOW_CORRECT'
   active: ActiveQuestion | null
   results: ScrapResult[]
 

@@ -6,7 +6,7 @@
 // (background 호출은 content orchestrator가 연결 — T=3 align).
 // =============================================================================
 
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { useSession } from '../session'
 import { ProberLogo } from './ProberLogo'
 import { QuestionView } from './QuestionView'
@@ -23,24 +23,6 @@ export function Panel({ onEnd }: Props) {
   const submitAnswer = useSession((s) => s.submitAnswer)
   const dismissExplanation = useSession((s) => s.dismissExplanation)
   const flushResults = useSession((s) => s.flushResults)
-
-  // 정답으로 IDLE 복귀 시 짧게 확인 토스트를 띄운다(별도 phase 없이 UI 로컬 처리).
-  const [toast, setToast] = useState(false)
-  const prevLen = useRef(0)
-  useEffect(() => {
-    if (results.length === 0) {
-      prevLen.current = 0
-      return
-    }
-    if (results.length > prevLen.current) {
-      prevLen.current = results.length
-      if (results[results.length - 1].correct) {
-        setToast(true)
-        const t = setTimeout(() => setToast(false), 1400)
-        return () => clearTimeout(t)
-      }
-    }
-  }, [results])
 
   const solved = results.length
   const correct = results.filter((r) => r.correct).length
@@ -102,16 +84,12 @@ export function Panel({ onEnd }: Props) {
           </div>
         ) : phase === 'IDLE' || !active ? (
           <div className="idle">
-            <span className="emoji">{toast ? '✅' : '📖'}</span>
-            {toast ? (
-              <div>정답이에요! 개념을 이해했어요.</div>
-            ) : (
-              <div>
-                기사를 읽어 내려가면
-                <br />
-                놓치기 쉬운 지점에서 질문이 나타나요.
-              </div>
-            )}
+            <span className="emoji">📖</span>
+            <div>
+              기사를 읽어 내려가면
+              <br />
+              놓치기 쉬운 지점에서 질문이 나타나요.
+            </div>
           </div>
         ) : (
           <QuestionView
