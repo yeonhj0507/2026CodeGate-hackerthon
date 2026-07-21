@@ -1,5 +1,11 @@
 import asyncio
+import os
 import uuid
+
+# ⚠️ 앱 import 보다 먼저. 앱이 .env 를 읽고 get_settings 가 lru_cache 되므로, 여기서 막지 않으면
+# .env 의 LLM_PROVIDER=claude 가 그대로 먹혀 테스트 전체가 실과금 호출을 때린다.
+# 실호출 검증은 tests/test_claude_live.py (PROBER_LIVE_LLM=1) 로만 한다.
+os.environ["LLM_PROVIDER"] = "mock"
 
 import pytest
 import pytest_asyncio

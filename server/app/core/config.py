@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     # "mock" | "claude". 키 확보 전에는 mock 으로 전 파이프라인이 동작한다.
     llm_provider: str = "mock"
     anthropic_api_key: str = ""
-    anthropic_model: str = "claude-sonnet-5"
+    anthropic_model: str = "claude-opus-4-8"
 
     # --- 스크랩 버퍼 무한 누적 방지 (명세 §9) ---
     scrap_buffer_ttl_days: int = 7

@@ -98,8 +98,34 @@ python scripts/demo_flow.py   # 로그인 → 흐름 A → 흐름 B 엔드투엔
 ## LLM
 
 `LLM_PROVIDER=mock`(기본)이면 키 없이 전 구간이 결정론적으로 동작한다.
-키가 준비되면 `.env` 에 `ANTHROPIC_API_KEY` 를 넣고 `LLM_PROVIDER=claude` 로 바꾸기만 하면 된다.
+키가 있으면 `.env` 에 `ANTHROPIC_API_KEY` 를 넣고 `LLM_PROVIDER=claude` 로 바꾼다.
 프롬프트·tool 스키마는 `app/domain/llm/prompts.py`.
+
+**모델·호출 정책** (`app/domain/llm/claude.py`) — 모델은 `claude-opus-4-8`.
+
+| 호출 지점 | thinking | effort | max_tokens | 실측 지연 |
+|---|---|---|---|---|
+| `/quiz` 퀴즈 생성 | adaptive | high | 16000 (스트리밍) | 약 40~47초 |
+| 개념 재요약 (`/thoughtmap/update`) | 끔 | low | 4000 | 약 8초 |
+
+- 퀴즈는 품질이 서비스의 핵심이라 사고를 켠다. **사고 토큰도 `max_tokens` 에 포함**되므로
+  넉넉히 잡고 스트리밍으로 받는다(큰 `max_tokens` 비스트리밍은 HTTP 타임아웃 위험).
+- 재요약은 근거가 개념 관계뿐이라 사고가 불필요하고, 로컬앱의 60초 `receiveTimeout`
+  안에 들어와야 한다. 초과하기 시작하면 `thoughtmap/service.py:MAX_SUMMARIES`(12)를 낮추는 게
+  첫 번째 레버다.
+- tool 스키마는 `strict: True`. **strict 는 재귀 스키마와 `minItems`/`maxItems`/`minimum`/
+  `maximum` 을 지원하지 않는다**(400) — 그래서 재질문을 L1/L2로 펼쳐 정의했고, 개수·범위는
+  스키마 `description` 과 시스템 프롬프트로 요구한 뒤 `quiz/service.py` 가 최종 검증·클램프한다.
+- 에러는 전부 공통 포맷으로 변환된다: `LLM_REFUSED`(모델 거절) · `LLM_TRUNCATED`(max_tokens) ·
+  `LLM_RATE_LIMITED`(429) · `LLM_API_ERROR`(5xx) · `LLM_UNREACHABLE`(네트워크) ·
+  `LLM_NOT_CONFIGURED`(키 없음).
+
+**실호출 테스트** — 기본 `pytest` 는 `conftest.py` 가 `LLM_PROVIDER=mock` 을 강제하므로
+`.env` 가 `claude` 여도 과금되지 않는다. 실제 호출을 검증하려면 명시적으로 켠다:
+
+```bash
+PROBER_LIVE_LLM=1 pytest -m live      # 퀴즈 1회 + 요약 1회, 약 55초 · 대략 $0.05~0.15
+```
 
 ## 탈퇴 시 파기 규약 (담당2 ↔ 담당3, 해결됨)
 
