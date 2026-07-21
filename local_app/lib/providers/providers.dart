@@ -1,3 +1,5 @@
+import 'dart:ui' show Offset;
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/app_exception.dart';
@@ -213,6 +215,69 @@ final syncControllerProvider =
 /// 지도 위 노드를 **탭**했을 때만 바뀐다. 탐색 키워드 담기([exploreKeywordProvider])
 /// 와는 완전히 독립이다 — 지도를 둘러보다 키워드가 저절로 쌓이면 안 된다.
 final selectedNodeIdProvider = StateProvider<String?>((ref) => null);
+
+// ── 노드 수동 배치 ─────────────────────────────────────────────────────────
+
+/// 사용자가 손으로 옮긴 노드 위치(노드 id → 중심 좌표). 방사형 자동 배치 위에
+/// 덮어씌워진다. 좌표는 [computeRadialLayout] 과 같은 **절대 중심 좌표**라
+/// 뷰포트·줌과 무관하다.
+///
+/// **위치 저장은 지도를 절대 죽이면 안 된다.** DB가 아직 안 열렸거나(테스트 등)
+/// 실패해도 지도는 자동 배치로 그대로 떠야 하므로, 읽기·쓰기 실패를 삼킨다.
+class NodePositionsController extends StateNotifier<Map<String, Offset>> {
+  NodePositionsController(this._db) : super(const {}) {
+    _load();
+  }
+
+  final AppDatabase _db;
+
+  Future<void> _load() async {
+    try {
+      final rows = await _db.loadNodePositions();
+      if (!mounted) return;
+      state = {for (final r in rows) r.id: Offset(r.dx, r.dy)};
+    } catch (_) {
+      // 무시 — 저장된 위치가 없거나 DB 미준비. 자동 배치로 진행한다.
+    }
+  }
+
+  /// 드래그 중 실시간 갱신(메모리만). 저장은 [commit] 이 맡는다.
+  void drag(String nodeId, Offset center) {
+    state = {...state, nodeId: center};
+  }
+
+  /// 드래그가 끝난 자리를 영구 저장한다.
+  Future<void> commit(String nodeId) async {
+    final center = state[nodeId];
+    if (center == null) return;
+    try {
+      await _db.setNodePosition(nodeId, center.dx, center.dy);
+    } catch (_) {
+      // 저장 실패해도 이번 세션 배치는 메모리에 남아 있다.
+    }
+  }
+
+  /// 노드 하나를 자동 배치로 되돌린다.
+  Future<void> reset(String nodeId) async {
+    state = {...state}..remove(nodeId);
+    try {
+      await _db.clearNodePosition(nodeId);
+    } catch (_) {}
+  }
+
+  /// 전부 자동 배치로 되돌린다.
+  Future<void> resetAll() async {
+    state = const {};
+    try {
+      await _db.clearAllNodePositions();
+    } catch (_) {}
+  }
+}
+
+final nodePositionsProvider =
+    StateNotifierProvider<NodePositionsController, Map<String, Offset>>((ref) {
+  return NodePositionsController(ref.watch(databaseProvider));
+});
 
 // ── 우측 패널 ──────────────────────────────────────────────────────────────
 

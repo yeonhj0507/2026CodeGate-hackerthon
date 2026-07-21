@@ -241,4 +241,110 @@ void main() {
 
     expect(find.byType(NodeDetailCard), findsNothing);
   });
+
+  // ─── 노드를 손으로 옮긴다(그냥 끌기) ─────────────────────────────────
+
+  testWidgets('노드를 끌면 위치가 갱신되고 영구 저장된다', (tester) async {
+    final container = ProviderContainer(overrides: dbOverride());
+    addTearDown(container.dispose);
+
+    tester.view.physicalSize = const Size(1400, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(home: Scaffold(body: ThoughtMapView(graph: graph))),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(container.read(nodePositionsProvider), isEmpty);
+
+    // 바로 끌기(빠른 드래그)는 롱프레스(탐색 담기)보다 먼저 승부가 난다.
+    await tester.drag(find.text('환헤지'), const Offset(90, 60));
+    await tester.pumpAndSettle();
+
+    expect(container.read(nodePositionsProvider).containsKey('n4'), isTrue,
+        reason: '끈 노드의 위치가 즉시 반영돼야 한다');
+
+    // 놓는 순간 로컬 DB에 저장된다(commit). 같은 연결의 다음 조회는 그 뒤에 돈다.
+    final saved = await container.read(databaseProvider).loadNodePositions();
+    expect(saved.any((r) => r.id == 'n4'), isTrue, reason: 'DB에 저장돼야 한다');
+  });
+
+  testWidgets('저장된 수동 위치가 자동 배치를 덮어쓴다', (tester) async {
+    // DB에 미리 넣어 둔 위치가, 앱을 다시 켰을 때(=새 프로바이더) 반영되는지.
+    final db = AppDatabase(NativeDatabase.memory());
+    addTearDown(db.close);
+    await db.setNodePosition('n4', 4000, 4000); // 방사형 배치와 한참 떨어진 곳
+
+    final container = ProviderContainer(
+      overrides: [databaseProvider.overrideWithValue(db)],
+    );
+    addTearDown(container.dispose);
+
+    tester.view.physicalSize = const Size(1400, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(home: Scaffold(body: ThoughtMapView(graph: graph))),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(container.read(nodePositionsProvider)['n4'], const Offset(4000, 4000),
+        reason: '저장된 위치가 프로바이더로 흘러들어야 한다');
+    // 그래도 노드는 여전히 화면 트리에 있어야 한다.
+    expect(find.text('환헤지'), findsOneWidget);
+  });
+
+  testWidgets('기사 노드도 끌어서 옮길 수 있다', (tester) async {
+    const article = SourceArticle(url: 'https://n.example/a', title: '환율 기사');
+    final withArticle = Graph(
+      nodes: const [
+        GraphNode(
+          id: 'n1',
+          concept: '환헤지',
+          state: NodeState.understood,
+          isPrereq: false,
+          sourceArticles: [article],
+        ),
+      ],
+    );
+
+    final container = ProviderContainer(overrides: dbOverride());
+    addTearDown(container.dispose);
+
+    tester.view.physicalSize = const Size(1400, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          home: Scaffold(body: ThoughtMapView(graph: withArticle)),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // 기사 제목으로 기사 노드를 잡아 끈다. 실제 드래그처럼 move 를 여러 번 보낸다
+    // (단일 move 는 아레나 확정 프레임에 첫 delta 를 삼켜 onPanUpdate 가 안 뜬다).
+    final g = await tester.startGesture(tester.getCenter(find.text('환율 기사')));
+    await g.moveBy(const Offset(25, 18));
+    await g.moveBy(const Offset(25, 18));
+    await g.moveBy(const Offset(30, 20));
+    await g.up();
+    await tester.pumpAndSettle();
+
+    expect(container.read(nodePositionsProvider).containsKey(articleNodeId(article)),
+        isTrue,
+        reason: '기사 노드의 위치가 반영돼야 한다');
+  });
 }
