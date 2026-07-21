@@ -116,6 +116,30 @@ class ClaudeProvider:
                 out[concept] = summary
         return out
 
+    async def explain_concepts(self, concepts: list[str]) -> str:
+        """탐색 탭용 묶음 설명. 재요약과 같은 정책(사고 끔 · effort low)으로 짧게 받는다."""
+        if not concepts:
+            return ""
+
+        try:
+            message = await _client().messages.create(
+                model=self._model,
+                max_tokens=1000,
+                system=prompts.EXPLORE_SYSTEM,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": "다음 개념들을 묶어서 설명하라: " + ", ".join(concepts),
+                    }
+                ],
+                thinking={"type": "disabled"},
+                output_config={"effort": "low"},
+            )
+        except Exception as exc:  # noqa: BLE001
+            raise _as_app_error(exc) from exc
+
+        return "".join(b.text for b in message.content if b.type == "text").strip()
+
 
 def _tool_input(message, tool_name: str) -> dict:
     """tool_use 블록을 꺼낸다. stop_reason 을 먼저 확인해야 원인이 드러난다."""
@@ -183,27 +207,3 @@ def _as_app_error(exc: Exception) -> Exception:
         )
 
     return exc
-
-    async def explain_concepts(self, concepts: list[str]) -> str:
-        """탐색 탭용 묶음 설명. 재요약과 같은 정책(사고 끔 · effort low)으로 짧게 받는다."""
-        if not concepts:
-            return ""
-
-        try:
-            message = await _client().messages.create(
-                model=self._model,
-                max_tokens=1000,
-                system=prompts.EXPLORE_SYSTEM,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": "다음 개념들을 묶어서 설명하라: " + ", ".join(concepts),
-                    }
-                ],
-                thinking={"type": "disabled"},
-                output_config={"effort": "low"},
-            )
-        except Exception as exc:  # noqa: BLE001
-            raise _as_app_error(exc) from exc
-
-        return "".join(b.text for b in message.content if b.type == "text").strip()
