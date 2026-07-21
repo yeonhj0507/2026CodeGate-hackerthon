@@ -185,7 +185,8 @@ function SignedIn({ email, onSignedOut }: { email: string; onSignedOut: () => vo
         {starting ? '여는 중…' : '이 기사에서 시작'}
       </button>
       <p style={{ ...styles.muted, marginTop: 8 }}>
-        읽고 싶은 기사를 연 뒤 눌러주세요. 스크롤하며 질문이 나타납니다.
+        기사를 열면 화면 오른쪽 아래에 시작 카드가 자동으로 뜹니다. 카드를 닫았거나
+        뜨지 않을 때 이 버튼으로 시작하세요.
       </p>
 
       {notice && <div style={{ ...styles.error, marginTop: 8 }}>{notice}</div>}

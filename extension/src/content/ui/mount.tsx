@@ -9,9 +9,10 @@
 // =============================================================================
 
 import { createRoot, type Root } from 'react-dom/client'
-import { PANEL_WIDTH_PX, SHADOW_HOST_TAG } from '../../shared/constants'
+import { PANEL_WIDTH_PX, PROMPT_HOST_TAG, SHADOW_HOST_TAG } from '../../shared/constants'
 import { Panel } from './Panel'
-import { PANEL_CSS } from './theme'
+import { StartPrompt, type StartPromptProps } from './StartPrompt'
+import { PANEL_CSS, PROMPT_CSS } from './theme'
 
 export interface MountOptions {
   /** "학습 종료" 시 실행. background로 스크랩 전송을 트리거하는 콜백을 넘긴다. */
@@ -58,4 +59,44 @@ export function mountPanel(options: MountOptions = {}): PanelHandle {
     },
   }
   return handle
+}
+
+// ─── 시작 제안 카드 ──────────────────────────────────────────────────────────
+
+let promptHandle: PanelHandle | null = null
+
+/**
+ * 기사 감지 시 우하단에 시작 제안 카드를 띄운다. 이미 떠 있으면 기존 핸들 반환.
+ * 패널과 달리 페이지 레이아웃은 건드리지 않는다(고정 오버레이).
+ */
+export function mountStartPrompt(props: StartPromptProps): PanelHandle {
+  if (promptHandle) return promptHandle
+
+  const host = document.createElement(PROMPT_HOST_TAG)
+  document.body.appendChild(host)
+
+  const shadow = host.attachShadow({ mode: 'open' })
+  const style = document.createElement('style')
+  style.textContent = PROMPT_CSS
+  shadow.appendChild(style)
+
+  const mountEl = document.createElement('div')
+  shadow.appendChild(mountEl)
+
+  const root: Root = createRoot(mountEl)
+  root.render(<StartPrompt {...props} />)
+
+  promptHandle = {
+    unmount: () => {
+      root.unmount()
+      host.remove()
+      promptHandle = null
+    },
+  }
+  return promptHandle
+}
+
+/** 제안 카드가 떠 있으면 내린다(세션 시작·닫기 시). */
+export function unmountStartPrompt(): void {
+  promptHandle?.unmount()
 }
