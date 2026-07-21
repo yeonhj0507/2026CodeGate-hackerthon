@@ -2,6 +2,9 @@
 node_modules/
 .env
 .env.local
+# .env 를 압축해 옮기다 커밋에 딸려 들어간 적이 있다(키가 들어 있었다).
+env.zip
+*.env.zip
 dist/
 .next/
 
