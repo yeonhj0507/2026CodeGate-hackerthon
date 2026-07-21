@@ -483,10 +483,10 @@ class _CanvasFab extends StatelessWidget {
   }
 }
 
-/// 그래프 노드 하나. 색으로 이해상태를, 모양으로 선행개념 여부를 나타낸다.
+/// 그래프 노드 하나. 알약 모양에 색(채움·테두리)으로 이해상태를 나타낸다.
 ///
-/// 선택 여부를 자기가 구독하되, **선택돼도 크기가 변하지 않게** 만든다 — 테두리
-/// 두께를 고정하고 색과 그림자로만 선택을 표시한다.
+/// 선택 여부를 자기가 구독하되, **선택돼도 크기가 변하지 않게** 만든다 — 테두리는
+/// 평소 투명·선택 시 핑크로 색만 바뀌고 두께는 고정, 그림자는 항상 얹는다.
 ///
 /// 제스처가 세 갈래다:
 ///   - **탭** — 노드를 선택한다(상세 카드).
@@ -525,20 +525,23 @@ class _ConceptNodeState extends ConsumerState<_ConceptNode> {
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
         color: style.fill,
-        borderRadius: BorderRadius.circular(node.isPrereq ? 20 : 10),
+        // 타원형 — 완전히 둥글게 잡아 실제 높이가 얼마든 알약 모양으로 보인다.
+        borderRadius: BorderRadius.circular(999),
+        // 평소엔 테두리를 안 보이게 투명으로만 둔다 — Border 자체를 null 로
+        // 빼면 두께만큼 박스 크기가 변해 "선택돼도 크기가 변하지 않게" 불변식이
+        // 깨지고 그래프가 튄다. 선택은 핑크 테두리로만 나타낸다.
         border: Border.all(
-          color: selected ? AppColors.pink : style.border,
+          color: selected ? AppColors.pink : Colors.transparent,
           width: 1.8,
         ),
-        boxShadow: selected
-            ? [
-                BoxShadow(
-                  color: style.border.withValues(alpha: 0.35),
-                  blurRadius: 14,
-                  spreadRadius: 1,
-                ),
-              ]
-            : null,
+        // 상태와 무관하게 항상 옅은 그림자를 얹어 노드가 배경에서 떠 보이게 한다.
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x14000000),
+            blurRadius: 6,
+            offset: Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -546,8 +549,10 @@ class _ConceptNodeState extends ConsumerState<_ConceptNode> {
         children: [
           Text(
             node.concept,
-            style: TextStyle(
-              color: style.text,
+            // 텍스트는 상태와 무관하게 검정으로 통일한다 — 색은 노드 채움/테두리가
+            // 맡고, 글자는 어느 상태에서나 잘 읽히게 둔다(Figma 라이트 테마).
+            style: const TextStyle(
+              color: AppColors.textPrimary,
               fontSize: 13,
               fontWeight: FontWeight.w600,
             ),
