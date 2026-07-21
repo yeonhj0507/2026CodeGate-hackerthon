@@ -14,7 +14,11 @@
 | [system_overview.md](./system_overview.md) | 전체 시스템 구조, 컴포넌트, API, 데이터 모델 |
 | [extension_implementation_plan.md](./extension_implementation_plan.md) | 크롬 익스텐션 상세 구현 계획 + Day별 Step |
 | [shared_contract.md](./shared_contract.md) | 스트림 분할(A/B/C), 타입 계약, Align 일정(T=0~5) |
+| [stream_a_align.md](./stream_a_align.md) | Stream A(Content Pipeline) 진행 상태 + T별 align 체크리스트 |
+| [stream_b_align.md](./stream_b_align.md) | Stream B(Logic+UI) 진행 상태 + T별 align 체크리스트 |
 | [stream_c_align.md](./stream_c_align.md) | Stream C(인프라) 진행 상태 + T별 align 체크리스트 — **계속 갱신됨** |
+| [stream_a_qa.md](./stream_a_qa.md) | Stream A T=5 QA·핸드오프 (앵커 튜닝, 브라우저 e2e 체크리스트) |
+| [stream_c_qa.md](./stream_c_qa.md) | Stream C T=5 QA·핸드오프 (`/quiz`·`/scrap` 재시도 큐 하니스, Step 9 핸드오프) |
 
 ---
 
@@ -22,7 +26,7 @@
 
 | 파트 | 담당자 | 상태 |
 |------|--------|------|
-| 크롬 익스텐션 | 정은택 | 🔲 미시작 |
+| 크롬 익스텐션 | 정은택 | 🟡 진행중 (Step 9 팝업 로그인만 남음, 담당2 스키마 대기) |
 | 로컬 앱 (Flutter) | 연현중 | 🔲 미시작 |
 | 백엔드 서버 | 서버 담당 | 🔲 미시작 |
 

@@ -4,8 +4,8 @@
 > Stream B는 `T=2,3,4,5` 단계마다 이 문서를 갱신합니다. **A·C 담당은 Stream B 코드를 호출/연동하기 전에 이 문서를 먼저 읽으세요.**
 >
 > 상위 계약: [shared_contract.md](./shared_contract.md) · 구현 계획: [extension_implementation_plan.md](./extension_implementation_plan.md)
-> 옆 스트림 로그: [stream_a_align.md](./stream_a_align.md) · [stream_c_align.md](./stream_c_align.md)
-> 최종 업데이트: 2026-07-21 (**T=4 종료** — /scrap 계약 확정·C 구현 완료·통합 tsc/build 통과. 재시도 큐 동작 B 검증(§T4.9): 계약 준수 확인 + 엣지 결함 2건 C에 회부)
+> 옆 스트림 로그: [stream_a_align.md](./stream_a_align.md) · [stream_c_align.md](./stream_c_align.md) · QA: [stream_b_qa.md](./stream_b_qa.md) · [stream_a_qa.md](./stream_a_qa.md)
+> 최종 업데이트: 2026-07-21 (**T=5 B QA 완료** — `npm run qa:session` 22/22, 통합 tsc/build green. handoff = stream_b_qa.md)
 
 ---
 
@@ -409,4 +409,11 @@ observer.onParagraphEnter((idx) => {
 - **재시도 큐 동작 방식 확인(§T4.9):** B가 C 실코드 대조 검증 — T4.4 계약 준수(FIFO 순서보존·in-flight 가드·빈배치·mock·토큰·drain 트리거) 확인. 추가로 엣지 결함 2건 발견해 C에 회부: ① enqueue↔drain read-modify-write 레이스(lost update), ② poison-message로 큐 영구 정체(재시도 상한 없음). MVP 비블로킹, 수정은 C 재량.
 - **B의 T=4 종결.** 남은 트리거(beforeunload·autosave)는 A, 팝업은 C(Step 9).
 
-<!-- T=5 이후 아래에 추가 -->
+### T=5 (2026-07-21) — B QA 완료
+- A의 `stream_a_qa.md` 확인 — §4 통합 브라우저 체크리스트가 B 관련 항목(진단 루프·큐·종료/ended·스크랩 payload) 이미 포함 → **B 전용 브라우저 QA 불필요**.
+- **회귀 게이트:** A(오케스트레이터)·C(/scrap) 통합 후 최종 트리에서 B 로직 재검증 — 전체 `tsc --noEmit` + B 회귀 통과.
+- **재현 가능 QA 하니스 신설:** `qa/session-qa.ts` + `npm run qa:session`(A `qa:anchor`·C `qa:scrap`와 동일 패턴), 세션 상태머신+큐 **22/22 통과**.
+- **`stream_b_qa.md` 작성**(handoff) — B 완성도·자동 QA·UI 실측·§4 B 표면 매핑·한계.
+- **B의 T=1~T=5 전부 종결.** 코드: `session.ts`/`session-bind.ts`/`ui/**`. QA: 자동(qa:session) + UI 실측 + 통합 빌드.
+
+<!-- (T=5 종료) -->
