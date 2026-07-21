@@ -17,7 +17,7 @@ from app.domain.llm.base import LlmProvider
 from app.domain.llm.claude import ClaudeProvider
 from app.domain.llm.mock import MockProvider
 from app.domain.search.base import SearchProvider
-from app.domain.search.claude_search import ClaudeSearchProvider
+from app.domain.search.naver_search import NaverSearchProvider
 from app.domain.search.mock import MockSearchProvider
 
 
@@ -35,7 +35,7 @@ def _protocol_methods(protocol: type) -> list[str]:
         (LlmProvider, MockProvider),
         (LlmProvider, ClaudeProvider),
         (SearchProvider, MockSearchProvider),
-        (SearchProvider, ClaudeSearchProvider),
+        (SearchProvider, NaverSearchProvider),
     ],
     ids=lambda v: getattr(v, "__name__", str(v)),
 )
@@ -55,7 +55,7 @@ def test_implements_every_protocol_method(protocol: type, implementation: type) 
         (LlmProvider, MockProvider),
         (LlmProvider, ClaudeProvider),
         (SearchProvider, MockSearchProvider),
-        (SearchProvider, ClaudeSearchProvider),
+        (SearchProvider, NaverSearchProvider),
     ],
     ids=lambda v: getattr(v, "__name__", str(v)),
 )

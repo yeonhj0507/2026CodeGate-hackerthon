@@ -30,10 +30,18 @@ class SearchProvider(Protocol):
 
 
 def get_search_provider() -> SearchProvider:
-    if get_settings().llm_provider == "claude":
-        from app.domain.search.claude_search import ClaudeSearchProvider
+    """실서버에서는 네이버 뉴스 검색을 쓴다.
 
-        return ClaudeSearchProvider()
+    Claude 의 `web_search` 로도 되지만 호출당 수 분·입력 1만9천 토큰이 들어
+    동기화 응답 시간과 비용을 혼자 지배했다(naver_search.py 주석 참고). 뉴스
+    검색은 전용 API 가 훨씬 싸고 빠르므로 그쪽을 기본으로 둔다.
+
+    키가 없으면 검색 없이 제휴 데이터셋만 쓴다 — 프로바이더가 빈 목록을 낸다.
+    """
+    if get_settings().llm_provider == "claude":
+        from app.domain.search.naver_search import NaverSearchProvider
+
+        return NaverSearchProvider()
 
     from app.domain.search.mock import MockSearchProvider
 

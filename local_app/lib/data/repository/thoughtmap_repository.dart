@@ -1,3 +1,4 @@
+import '../../core/app_exception.dart';
 import '../api/api_client.dart';
 import '../db/database.dart';
 import '../dto/graph.dart';
@@ -64,6 +65,19 @@ class ThoughtmapRepository {
       after: res.graph,
       newArticles: newArticles,
     ));
+
+    // 로컬 반영이 끝난 **뒤에야** 서버 버퍼를 비우라고 알린다.
+    //
+    // 예전엔 서버가 응답을 만든 직후 스스로 지웠다. 그러면 응답을 못 받은
+    // 클라이언트(타임아웃·순단·앱 종료)의 진단이 서버에서도 로컬에서도 사라진다.
+    // 이 호출이 실패해도 잃는 건 없다 — 다음 동기화가 같은 스크랩을 다시 반영하고
+    // (병합은 두 번 먹어도 결과가 같다) 그때 다시 지울 기회가 온다. 그래서
+    // 실패를 삼킨다. 여기서 예외를 올리면 이미 성공한 동기화가 실패로 보인다.
+    try {
+      await _api.ackScraps(res.consumedScrapIds);
+    } on AppException catch (_) {
+      // 다음 동기화에서 정리된다.
+    }
 
     final before = localGraph.nodes.map((n) => n.id).toSet();
     final added = res.graph.nodes.where((n) => !before.contains(n.id)).length;

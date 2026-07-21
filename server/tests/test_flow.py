@@ -60,10 +60,74 @@ async def test_scrap_then_sync_consumes_buffer(client):
     edges = {(e["from"], e["to"]) for e in body["graph"]["edges"]}
     assert edges  # 선행 → 후행 엣지 복원
 
-    # 재동기화하면 버퍼는 비어 있다.
+    # 아직 지워지지 않았다 — 클라이언트가 반영을 마쳤다고 알려야 지운다.
+    assert len(body["consumedScrapIds"]) == 2
+
+    ack = await client.post(
+        "/thoughtmap/ack", json={"scrapIds": body["consumedScrapIds"]}
+    )
+    assert ack.status_code == 200
+    assert ack.json()["deleted"] == 2
+
+    # ack 뒤에 재동기화하면 버퍼는 비어 있다.
     again = await client.post("/thoughtmap/update", json={"graph": body["graph"]})
     assert again.json()["consumedScraps"] == 0
     assert len(again.json()["graph"]["nodes"]) == len(body["graph"]["nodes"])
+
+
+async def test_scraps_survive_a_client_that_never_comes_back(client):
+    """응답을 못 받은 클라이언트가 있어도 진단이 사라지면 안 된다.
+
+    예전에는 서버가 응답을 만든 직후 버퍼를 지웠다. 클라이언트가 타임아웃으로
+    끊으면 서버는 삭제까지 끝냈고 클라이언트는 아무것도 못 받아, 사용자가 푼
+    진단이 서버에서도 로컬에서도 사라졌다(QA 중 실제로 한 세션이 날아갔다).
+    """
+    await client.post("/scrap", json=scrap_payload("금리 기사", "기준금리", "통화정책", False))
+
+    # 1차 동기화 — 응답은 받았지만 ack 을 보내지 못한 상황(끊김·앱 종료).
+    first = (
+        await client.post("/thoughtmap/update", json={"graph": {"nodes": [], "edges": []}})
+    ).json()
+    assert first["consumedScraps"] == 1
+
+    # 2차 동기화에서 같은 스크랩이 그대로 다시 반영된다.
+    second = (
+        await client.post("/thoughtmap/update", json={"graph": {"nodes": [], "edges": []}})
+    ).json()
+    assert second["consumedScraps"] == 1
+
+    # 두 번 먹어도 결과가 같아야 재반영이 안전하다.
+    assert {n["concept"]: n["state"] for n in second["graph"]["nodes"]} == {
+        n["concept"]: n["state"] for n in first["graph"]["nodes"]
+    }
+
+
+async def test_ack_is_scoped_to_the_owner(client, other_client):
+    """남의 id 를 보내 지우게 두지 않는다."""
+    await client.post("/scrap", json=scrap_payload("금리 기사", "기준금리", "통화정책", False))
+    body = (
+        await client.post("/thoughtmap/update", json={"graph": {"nodes": [], "edges": []}})
+    ).json()
+    ids = body["consumedScrapIds"]
+    assert ids
+
+    stolen = await other_client.post("/thoughtmap/ack", json={"scrapIds": ids})
+    assert stolen.json()["deleted"] == 0
+
+    # 주인이 보내면 지워진다.
+    assert (await client.post("/thoughtmap/ack", json={"scrapIds": ids})).json()["deleted"] == len(ids)
+
+
+async def test_ack_is_safe_to_retry(client):
+    """같은 ack 이 두 번 와도 두 번째는 0건일 뿐 오류가 아니다."""
+    await client.post("/scrap", json=scrap_payload("금리 기사", "기준금리", "통화정책", False))
+    ids = (
+        await client.post("/thoughtmap/update", json={"graph": {"nodes": [], "edges": []}})
+    ).json()["consumedScrapIds"]
+
+    assert (await client.post("/thoughtmap/ack", json={"scrapIds": ids})).json()["deleted"] == 1
+    assert (await client.post("/thoughtmap/ack", json={"scrapIds": ids})).json()["deleted"] == 0
+    assert (await client.post("/thoughtmap/ack", json={"scrapIds": []})).json()["deleted"] == 0
 
 
 async def test_same_article_read_twice_keeps_one_source(client):

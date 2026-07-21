@@ -101,6 +101,12 @@ class DioApiClient implements ApiClient {
   }
 
   @override
+  Future<void> ackScraps(List<String> scrapIds) async {
+    if (scrapIds.isEmpty) return;
+    await _unwrap(_dio.post('/thoughtmap/ack', data: {'scrapIds': scrapIds}));
+  }
+
+  @override
   Future<ExploreResult> explore(ExploreRequest req) async {
     final body = await _unwrap(_dio.post('/explore', data: req.toJson()));
     return ExploreResult.fromJson(body);
