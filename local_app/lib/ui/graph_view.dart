@@ -47,6 +47,18 @@ class _ThoughtMapViewState extends ConsumerState<ThoughtMapView> {
         for (final e in g.edges) '${e.from}>${e.to}',
       ].join(',');
 
+  /// 노드 하나가 **혼자** 리빌드될 때 나머지가 지워지는 것을 막는다.
+  ///
+  /// graphview 1.5.1 의 `performLayout` 은 전체 재계산이 아닐 때 자식 배치
+  /// (`_layoutNodesLazily`)를 통째로 건너뛰는데, 그 뒤 `endLayout()` 은
+  /// **이번 배치에서 재사용되지 않은 자식을 전부 언마운트**한다. 그래서 재계산
+  /// 없는 재레이아웃이 한 번만 일어나도 노드가 몰살된다.
+  ///
+  /// 노드를 탭할 때는 상위(HomePage)가 선택 상태를 구독해 함께 리빌드되므로
+  /// 재계산이 걸려 문제가 드러나지 않는다. 반면 드래그는 Draggable 이 자기
+  /// 자식만 다시 그리기 때문에 이 경로를 정통으로 밟는다.
+  void _keepNodesAlive() => _controller.forceRecalculation();
+
   void _fitWhenShapeChanged(Graph g) {
     final shape = _shapeOf(g);
     if (shape == _fittedShape) return;
@@ -103,7 +115,7 @@ class _ThoughtMapViewState extends ConsumerState<ThoughtMapView> {
       final id = gvNode.key!.value as String;
       final node = graph.nodeById(id);
       if (node == null) return const SizedBox.shrink();
-      return _ConceptNode(node: node);
+      return _ConceptNode(node: node, keepNodesAlive: _keepNodesAlive);
     }
 
     return Stack(
@@ -191,9 +203,13 @@ class _AllNodesDelegate extends gv.GraphChildDelegate {
 /// 담긴다. 두 액션은 완전히 독립적이다 — 탭이 탐색 선택까지 건드리면 지도를
 /// 둘러보다가 의도치 않게 키워드가 쌓인다.
 class _ConceptNode extends ConsumerWidget {
-  const _ConceptNode({required this.node});
+  const _ConceptNode({required this.node, required this.keepNodesAlive});
 
   final GraphNode node;
+
+  /// 드래그가 시작·종료될 때 지도 전체를 살려 두기 위한 신호([_keepNodesAlive]).
+  /// 두 시점 모두 이 노드만 다시 그려지므로 둘 다 걸어야 한다.
+  final VoidCallback keepNodesAlive;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -250,6 +266,8 @@ class _ConceptNode extends ConsumerWidget {
 
     return LongPressDraggable<String>(
       data: node.id,
+      onDragStarted: keepNodesAlive,
+      onDragEnd: (_) => keepNodesAlive(),
       feedback: Material(
         color: Colors.transparent,
         child: Container(

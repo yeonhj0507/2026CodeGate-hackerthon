@@ -188,6 +188,18 @@ void main() {
       expect(api.exploreCalls, hasLength(1));
     });
 
+    testWidgets('키워드를 담아도 지도의 나머지 개념은 그대로 남는다', (tester) async {
+      // 드래그 한 번에 지도에서 다른 노드가 사라지면 지도를 못 쓰게 된다.
+      await pumpHome(tester, graph: graph);
+      await openExploreTab(tester);
+      await dragConceptToDropZone(tester, '환헤지');
+
+      for (final node in graph.nodes) {
+        expect(find.text(node.concept), findsWidgets,
+            reason: '${node.concept} 이 지도에서 사라졌다');
+      }
+    });
+
     testWidgets('탭만으로는 키워드가 담기지 않는다', (tester) async {
       await pumpHome(tester, graph: graph);
       await openExploreTab(tester);
