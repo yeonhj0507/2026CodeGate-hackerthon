@@ -32,6 +32,12 @@ def scrap(results: list[dict], relations: list[dict]) -> ScrapInput:
 
 
 def edge_set(graph: Graph) -> set[tuple[str, str]]:
+    """그래프 엣지를 (from, to) 로 훑는다.
+
+    ⚠️ 익스텐션이 보내는 relations 는 {from: 선행, to: 후행} 인데, 그래프 엣지는
+    **from=후행 → to=선행** 이다(schemas.GraphEdge). 그래서 아래 기대값은 입력
+    relations 와 방향이 뒤집혀 보이는 게 정상이다.
+    """
     return {(e.from_, e.to) for e in graph.edges}
 
 
@@ -50,7 +56,7 @@ def test_all_correct_session_still_gets_edges():
         ],
     )
 
-    assert edge_set(graph) == {("환헤지", "ndf의 환율 전가 경로"), ("환율", "환헤지")}
+    assert edge_set(graph) == {("ndf의 환율 전가 경로", "환헤지"), ("환헤지", "환율")}
 
 
 def test_relation_only_concepts_enter_as_unknown():
@@ -85,7 +91,7 @@ def test_normalizes_both_ends():
     )
 
     ids = {n.id for n in graph.nodes}
-    assert edge_set(graph) == {("환헤지", "환율전가")}
+    assert edge_set(graph) == {("환율전가", "환헤지")}
     assert {"환헤지", "환율전가"} <= ids
 
 
@@ -123,7 +129,7 @@ def test_does_not_duplicate_the_parent_concept_edge():
     )
 
     assert len(graph.edges) == 1
-    assert edge_set(graph) == {("환헤지", "환율 전가")}
+    assert edge_set(graph) == {("환율 전가", "환헤지")}
 
 
 def test_relations_accumulate_across_articles():
@@ -141,7 +147,7 @@ def test_relations_accumulate_across_articles():
         ],
     )
 
-    assert edge_set(graph) == {("환헤지", "환율 전가"), ("환헤지", "기준금리")}
+    assert edge_set(graph) == {("환율 전가", "환헤지"), ("기준금리", "환헤지")}
 
 
 def test_missing_relations_is_backward_compatible():

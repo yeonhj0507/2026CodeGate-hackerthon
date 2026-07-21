@@ -52,10 +52,10 @@ def test_new_nodes_and_prereq_edge():
     assert by_concept["기준금리"].isPrereq is False
     assert by_concept["통화정책"].isPrereq is True
 
-    # 엣지 방향은 선행 → 후행.
+    # 엣지 방향은 후행(from) → 선행(to). 화살표를 따라가면 더 근본적인 개념이 나온다.
     edges = {(e.from_, e.to) for e in graph.edges}
-    assert (normalize_concept("통화정책"), normalize_concept("기준금리")) in edges
-    assert (normalize_concept("중앙은행"), normalize_concept("통화정책")) in edges
+    assert (normalize_concept("기준금리"), normalize_concept("통화정책")) in edges
+    assert (normalize_concept("통화정책"), normalize_concept("중앙은행")) in edges
 
 
 def test_later_scrap_recovers_state():

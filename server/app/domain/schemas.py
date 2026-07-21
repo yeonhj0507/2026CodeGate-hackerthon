@@ -154,6 +154,18 @@ class GraphNode(Strict):
 
 
 class GraphEdge(Strict):
+    """개념 사이의 관계 한 줄.
+
+    **방향: from = 후행(기사의 핵심어) → to = 선행(먼저 알아야 할 개념).**
+
+    화살표를 따라가면 더 근본적인 개념으로 내려간다. 로컬앱 지도는 Sugiyama
+    상→하 레이아웃이라 `from` 이 위층에 놓이므로, 이 방향이면 기사에서 만난
+    핵심어가 맨 위에 서고 그 아래로 선행 개념이 뻗는다.
+
+    ⚠️ 이 방향은 예전과 반대다(과거: from=선행 → to=후행). 엣지를 읽는 코드는
+    전부 이 규칙을 따라야 한다 — merge/recommend/_attach_summaries 가 그렇다.
+    """
+
     # `from` 은 파이썬 예약어라 필드명은 from_ 이고 JSON 키만 "from" 이다.
     # FastAPI 는 response_model 직렬화 시 by_alias=True 를 쓰므로 계약이 유지된다.
     from_: str = Field(alias="from")
