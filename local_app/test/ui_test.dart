@@ -5,7 +5,7 @@ import 'package:prober_local/data/dto/graph.dart';
 import 'package:prober_local/data/dto/recommendation.dart';
 import 'package:prober_local/providers/providers.dart';
 import 'package:prober_local/ui/graph_view.dart';
-import 'package:prober_local/ui/node_detail_panel.dart';
+import 'package:prober_local/ui/node_detail_card.dart';
 import 'package:prober_local/ui/recommendation_panel.dart';
 
 /// 화면 단위 검증. Windows 네이티브 빌드 없이 돌아간다.
@@ -123,10 +123,14 @@ void main() {
     });
   });
 
-  group('NodeDetailPanel', () {
+  group('NodeDetailCard', () {
     testWidgets('재요약·출처 기사·연결 개념을 보여준다', (tester) async {
       await tester.pumpWidget(host(
-        NodeDetailPanel(node: graph.nodeById('c_실질금리')!, graph: graph),
+        NodeDetailCard(
+          node: graph.nodeById('c_실질금리')!,
+          graph: graph,
+          onClose: () {},
+        ),
       ));
       await tester.pumpAndSettle();
 
@@ -145,7 +149,11 @@ void main() {
 
     testWidgets('summaryMeta가 없으면 재요약 섹션을 숨긴다', (tester) async {
       await tester.pumpWidget(host(
-        NodeDetailPanel(node: graph.nodeById('c_기준금리')!, graph: graph),
+        NodeDetailCard(
+          node: graph.nodeById('c_기준금리')!,
+          graph: graph,
+          onClose: () {},
+        ),
       ));
       await tester.pumpAndSettle();
 
@@ -181,7 +189,7 @@ void main() {
 
     testWidgets('세 섹션으로 나눠 보여준다(명세 §5.3)', (tester) async {
       await tester
-          .pumpWidget(host(const RecommendationPanel(recommendations: recs)));
+          .pumpWidget(host(const RecommendationPanel(recommendations: recs, graph: Graph.empty)));
       await tester.pumpAndSettle();
 
       expect(find.text('모를 것 같은 개념'), findsOneWidget);
@@ -203,20 +211,23 @@ void main() {
         ],
       );
       await tester
-          .pumpWidget(host(const RecommendationPanel(recommendations: onlyGap)));
+          .pumpWidget(host(const RecommendationPanel(recommendations: onlyGap, graph: Graph.empty)));
       await tester.pumpAndSettle();
 
       expect(find.textContaining('아직 확장 추천이 없어요'), findsOneWidget);
     });
 
-    testWidgets('개념 추천을 누르면 그래프 선택이 그 노드로 옮겨간다', (tester) async {
+    // 개념 카드를 누르면 **이 패널 안에서** 상세가 열린다. 예전에는 지도 선택도
+    // 함께 옮겼는데, 그러면 같은 개념의 상세가 지도와 패널 양쪽에 동시에 떠서
+    // 같은 내용이 두 번 나왔다. 지도 탭과 추천 탭은 각자의 상세를 갖는다.
+    testWidgets('개념 추천을 누르면 패널 상세가 열리고, 지도 선택은 그대로다', (tester) async {
       final container = ProviderContainer();
       addTearDown(container.dispose);
 
       await tester.pumpWidget(UncontrolledProviderScope(
         container: container,
         child: const MaterialApp(
-          home: Scaffold(body: RecommendationPanel(recommendations: recs)),
+          home: Scaffold(body: RecommendationPanel(recommendations: recs, graph: Graph.empty)),
         ),
       ));
       await tester.pumpAndSettle();
@@ -224,17 +235,18 @@ void main() {
       await tester.tap(find.text('실질금리'));
       await tester.pumpAndSettle();
 
-      expect(container.read(selectedNodeIdProvider), 'c_실질금리');
+      expect(container.read(inlineConceptDetailProvider), 'c_실질금리');
+      expect(container.read(selectedNodeIdProvider), isNull);
     });
 
-    testWidgets('확장 추천을 누르면 그래프 선택이 그 노드로 옮겨간다', (tester) async {
+    testWidgets('확장 추천을 누르면 패널 상세가 열리고, 지도 선택은 그대로다', (tester) async {
       final container = ProviderContainer();
       addTearDown(container.dispose);
 
       await tester.pumpWidget(UncontrolledProviderScope(
         container: container,
         child: const MaterialApp(
-          home: Scaffold(body: RecommendationPanel(recommendations: recs)),
+          home: Scaffold(body: RecommendationPanel(recommendations: recs, graph: Graph.empty)),
         ),
       ));
       await tester.pumpAndSettle();
@@ -242,12 +254,13 @@ void main() {
       await tester.tap(find.text('기준금리'));
       await tester.pumpAndSettle();
 
-      expect(container.read(selectedNodeIdProvider), 'c_기준금리');
+      expect(container.read(inlineConceptDetailProvider), 'c_기준금리');
+      expect(container.read(selectedNodeIdProvider), isNull);
     });
 
     testWidgets('추천이 없으면 안내 문구를 보여준다', (tester) async {
       await tester.pumpWidget(
-          host(const RecommendationPanel(recommendations: Recommendations.empty)));
+          host(const RecommendationPanel(recommendations: Recommendations.empty, graph: Graph.empty)));
       await tester.pumpAndSettle();
 
       expect(find.textContaining('동기화하면 여기에'), findsOneWidget);

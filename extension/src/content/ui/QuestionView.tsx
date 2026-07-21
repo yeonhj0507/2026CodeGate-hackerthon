@@ -38,7 +38,7 @@ interface Props {
 export function QuestionView({ active, phase, onSubmit, onNext }: Props) {
   const [selected, setSelected] = useState<number | null>(null)
   const { item } = active
-  const graded = phase === 'SHOW_EXPLANATION'
+  const graded = phase === 'SHOW_EXPLANATION' || phase === 'SHOW_CORRECT'
   const level = levelLabel(active.level)
 
   return (
@@ -98,7 +98,12 @@ export function QuestionView({ active, phase, onSubmit, onNext }: Props) {
       {graded && (
         <Explanation
           text={item.explanation}
-          canDescend={item.followups.length > 0 && active.level < MAX_FOLLOWUP_LEVEL}
+          correct={phase === 'SHOW_CORRECT'}
+          canDescend={
+            phase === 'SHOW_EXPLANATION' &&
+            item.followups.length > 0 &&
+            active.level < MAX_FOLLOWUP_LEVEL
+          }
           onNext={onNext}
         />
       )}

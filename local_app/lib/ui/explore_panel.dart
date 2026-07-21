@@ -2,167 +2,333 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../data/dto/explore.dart';
 import '../data/dto/graph.dart';
 import '../data/dto/recommendation.dart';
 import '../providers/providers.dart';
+import 'app_colors.dart';
+import 'widgets/panel_header.dart';
 
-/// 탐색 탭 — 키워드 2~3개를 골라 "더 탐색하기".
+/// "탐색" 탭 — 뇌지도에서 개념을 끌어다 놓고 **묶어서** 물어본다.
 ///
-/// 개별 개념을 하나씩 보는 추천 탭과 달리, **여러 개념을 묶었을 때 무엇이 보이는지**를
-/// 서버에 물어본다(설명 2~3문장 + 기사 2건).
+/// 개별 개념을 하나씩 보는 추천 탭과 다른 점이 여기다. 서버 `/explore` 는 고른
+/// 개념 전체를 한 번에 받아 **관계 중심 설명 한 덩어리**와 기사 2건을 돌려준다
+/// (`EXPLORE_SYSTEM` 프롬프트). 그래서 결과도 키워드마다 나누지 않고 카드 하나로
+/// 보여준다 — 개념별로 쪼개면 이 기능의 존재 이유가 사라진다.
+///
+/// 키워드는 오직 **드래그로만** 담긴다. 그래프 노드를 짧게 탭하는 것(노드 선택)과
+/// 완전히 독립된 액션이라, 지도를 둘러보다 키워드가 저절로 쌓이지 않는다.
 class ExplorePanel extends ConsumerWidget {
-  const ExplorePanel({super.key, required this.graph});
+  const ExplorePanel({super.key, required this.graph, this.onClose});
+
+  /// 서버가 한 번에 받는 개념 수 상한과 맞춘다(`ExploreRequest.conceptTags`).
+  static const maxKeywords = 5;
 
   final Graph graph;
 
-  static const _maxPick = 3;
+  /// 도킹 패널에서 닫기(X)를 눌렀을 때. null 이면 헤더를 그리지 않는다.
+  final VoidCallback? onClose;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final scheme = Theme.of(context).colorScheme;
-    final picked = ref.watch(exploreSelectionProvider);
+    final selectedIds = ref.watch(exploreKeywordProvider);
+    final revealed = ref.watch(exploreRevealedProvider);
     final result = ref.watch(exploreControllerProvider);
+    final selectedNodes =
+        selectedIds.map(graph.nodeById).whereType<GraphNode>().toList();
 
-    // 진단된 개념만 후보로 둔다 — 아직 만나지 않은 개념은 묶어봐야 의미가 없다.
-    final candidates =
-        graph.nodes.where((n) => n.state != NodeState.unknown).toList();
-
-    if (candidates.isEmpty) {
-      return _Hint(
-        text: '아직 탐색할 개념이 없어요.\n기사를 읽고 동기화하면 여기에 키워드가 쌓입니다.',
-      );
+    // 키워드 구성이 바뀌면 결과를 접는다. 고른 것과 화면에 떠 있는 설명이
+    // 어긋난 채로 남으면 안 되기 때문에, 결과는 항상 버튼을 눌러 갱신한다.
+    void add(String id) {
+      final current = ref.read(exploreKeywordProvider);
+      if (current.contains(id) || current.length >= maxKeywords) return;
+      ref.read(exploreKeywordProvider.notifier).state = [...current, id];
+      ref.read(exploreRevealedProvider.notifier).state = false;
     }
 
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-      children: [
-        Text('키워드를 2~3개 고르세요',
-            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 4),
-        Text('묶었을 때 어떻게 이어지는지 설명해 드릴게요',
-            style: TextStyle(fontSize: 11.5, color: scheme.outline)),
-        const SizedBox(height: 12),
+    void remove(String id) {
+      ref.read(exploreKeywordProvider.notifier).state =
+          ref.read(exploreKeywordProvider).where((e) => e != id).toList();
+      ref.read(exploreRevealedProvider.notifier).state = false;
+    }
 
-        Wrap(
-          spacing: 6,
-          runSpacing: 6,
-          children: [
-            for (final node in candidates)
-              FilterChip(
-                label: Text(node.concept, style: const TextStyle(fontSize: 12)),
-                selected: picked.contains(node.id),
-                // 상한을 넘기면 더 못 고르게 막는다(서버도 5개까지만 받는다).
-                onSelected: (on) {
-                  final next = {...picked};
-                  if (on) {
-                    if (next.length >= _maxPick) return;
-                    next.add(node.id);
-                  } else {
-                    next.remove(node.id);
-                  }
-                  ref.read(exploreSelectionProvider.notifier).state = next;
-                },
-              ),
+    Future<void> run() async {
+      ref.read(exploreRevealedProvider.notifier).state = true;
+      await ref.read(exploreControllerProvider.notifier).run(selectedNodes);
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (onClose != null) ...[
+            PanelHeader(title: '탐색', onClose: onClose!),
+            const SizedBox(height: 4),
           ],
-        ),
-        const SizedBox(height: 14),
-
-        FilledButton.icon(
-          onPressed: picked.isEmpty || result.isLoading
-              ? null
-              : () => ref.read(exploreControllerProvider.notifier).run(
-                    picked.map(graph.nodeById).whereType<GraphNode>().toList(),
+          Text(
+            '함께 알아보고 싶은 개념을 최대 $maxKeywords개까지 골라보세요 '
+            '(${selectedIds.length}/$maxKeywords)',
+            style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
+          ),
+          const SizedBox(height: 10),
+          _KeywordDropZone(
+            selectedNodes: selectedNodes,
+            canAcceptMore: selectedIds.length < maxKeywords,
+            onAccept: add,
+            onRemove: remove,
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              onPressed:
+                  selectedNodes.isEmpty || result.isLoading ? null : run,
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.pink,
+                disabledBackgroundColor: AppColors.border,
+              ),
+              child: Text(result.isLoading ? '찾는 중…' : '더 탐색하기'),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Expanded(
+            child: !revealed
+                ? const SizedBox.shrink()
+                : result.when(
+                    loading: () => const Center(
+                      child: SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: AppColors.pink),
+                      ),
+                    ),
+                    error: (e, _) => _Hint('탐색에 실패했어요.\n$e'),
+                    data: (data) => data == null || data.isEmpty
+                        ? const _Hint('보여줄 내용을 찾지 못했어요.')
+                        : _ExploreResultView(result: data),
                   ),
-          icon: result.isLoading
-              ? const SizedBox(
-                  width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
-              : const Icon(Icons.travel_explore, size: 18),
-          label: Text(result.isLoading ? '찾는 중…' : '더 탐색하기'),
-        ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
-        const SizedBox(height: 18),
-        result.when(
-          loading: () => const SizedBox.shrink(),
-          error: (e, _) => _Hint(text: '탐색에 실패했어요.\n$e'),
-          data: (data) {
-            if (data == null) return const SizedBox.shrink();
-            return Column(
+/// 뇌지도에서 끌어온 노드를 받는 드롭 영역.
+///
+/// 담긴 키워드는 칩으로 보여주고 ×로 뺀다.
+class _KeywordDropZone extends StatelessWidget {
+  const _KeywordDropZone({
+    required this.selectedNodes,
+    required this.canAcceptMore,
+    required this.onAccept,
+    required this.onRemove,
+  });
+
+  final List<GraphNode> selectedNodes;
+  final bool canAcceptMore;
+  final ValueChanged<String> onAccept;
+  final ValueChanged<String> onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    return DragTarget<String>(
+      onWillAcceptWithDetails: (details) =>
+          canAcceptMore && !selectedNodes.any((n) => n.id == details.data),
+      onAcceptWithDetails: (details) => onAccept(details.data),
+      builder: (context, candidateData, rejectedData) {
+        final hovering = candidateData.isNotEmpty;
+        return Container(
+          width: double.infinity,
+          constraints: const BoxConstraints(minHeight: 64),
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: hovering ? AppColors.pinkBgSoft : AppColors.panelBg,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: hovering ? AppColors.pink : AppColors.border,
+              width: hovering ? 1.6 : 1,
+            ),
+          ),
+          child: selectedNodes.isEmpty
+              ? const Center(
+                  child: Text(
+                    '뇌지도에서 개념을 길게 눌러 여기로 끌어다 놓으세요',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 11.5, color: AppColors.textMuted),
+                  ),
+                )
+              : Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final n in selectedNodes)
+                      _SelectedKeywordChip(
+                        label: n.concept,
+                        onRemove: () => onRemove(n.id),
+                      ),
+                  ],
+                ),
+        );
+      },
+    );
+  }
+}
+
+class _SelectedKeywordChip extends StatelessWidget {
+  const _SelectedKeywordChip({required this.label, required this.onRemove});
+
+  final String label;
+  final VoidCallback onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.only(left: 12, right: 4, top: 5, bottom: 5),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.pink),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(label,
+              style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.pink)),
+          InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: onRemove,
+            child: const Padding(
+              padding: EdgeInsets.all(4),
+              child: Icon(Icons.close, size: 13, color: AppColors.pink),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 서버가 돌려준 **한 덩어리** 결과 — 묶어서 본 설명 + 이어 읽을 기사.
+class _ExploreResultView extends StatelessWidget {
+  const _ExploreResultView({required this.result});
+
+  final ExploreResult result;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: EdgeInsets.zero,
+      children: [
+        if (result.explanation.isNotEmpty)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: AppColors.panelBg,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (data.explanation.isNotEmpty) ...[
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1D2130),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(data.explanation,
-                        style: const TextStyle(fontSize: 13, height: 1.7)),
-                  ),
-                  const SizedBox(height: 16),
-                ],
-                if (data.articles.isNotEmpty) ...[
-                  Text('이어서 읽어보기',
-                      style: TextStyle(
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w600,
-                          color: scheme.outline)),
-                  const SizedBox(height: 8),
-                  for (final a in data.articles) _ExploreArticle(article: a),
-                ],
+                const Text('이 개념들을 함께 보면',
+                    style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textMuted)),
+                const SizedBox(height: 8),
+                Text(
+                  result.explanation,
+                  style: const TextStyle(
+                      fontSize: 13, height: 1.7, color: AppColors.textPrimary),
+                ),
               ],
-            );
-          },
-        ),
+            ),
+          ),
+        if (result.articles.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          const Text('이어서 읽어보기',
+              style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textMuted)),
+          const SizedBox(height: 8),
+          for (final a in result.articles) _ExploreArticleTile(article: a),
+        ],
       ],
     );
   }
 }
 
-class _ExploreArticle extends StatelessWidget {
-  const _ExploreArticle({required this.article});
+class _ExploreArticleTile extends StatelessWidget {
+  const _ExploreArticleTile({required this.article});
 
   final ArticleRecommendation article;
 
+  Future<void> _open(BuildContext context) async {
+    final uri = Uri.tryParse(article.url);
+    final ok = uri != null &&
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!ok && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('링크를 열지 못했습니다: ${article.url}')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      color: const Color(0xFF1D2130),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: () async {
-          final uri = Uri.tryParse(article.url);
-          if (uri != null) await launchUrl(uri, mode: LaunchMode.externalApplication);
-        },
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Text(article.title,
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Material(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: () => _open(context),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              border: Border.all(color: AppColors.border),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        article.title,
                         style: const TextStyle(
-                            fontSize: 13.5, fontWeight: FontWeight.w600)),
+                            fontSize: 11.5, color: AppColors.textPrimary),
+                      ),
+                      // 제휴 데이터셋에서 온 것과 웹 검색으로 채운 것을 구분한다.
+                      if (article.publisher != null || article.isFromSearch) ...[
+                        const SizedBox(height: 3),
+                        Text(
+                          [
+                            if (article.publisher != null) article.publisher!,
+                            if (article.isFromSearch) '웹 검색',
+                          ].join(' · '),
+                          style: const TextStyle(
+                              fontSize: 10.5, color: AppColors.textMuted),
+                        ),
+                      ],
+                    ],
                   ),
-                  const SizedBox(width: 6),
-                  Icon(Icons.open_in_new, size: 15, color: scheme.outline),
-                ],
-              ),
-              const SizedBox(height: 6),
-              Text(
-                [
-                  if (article.publisher != null) article.publisher!,
-                  if (article.isFromSearch) '웹 검색',
-                ].join(' · '),
-                style: TextStyle(fontSize: 11.5, color: scheme.outline),
-              ),
-            ],
+                ),
+                const SizedBox(width: 6),
+                const Icon(Icons.open_in_new,
+                    size: 12, color: AppColors.textMuted),
+              ],
+            ),
           ),
         ),
       ),
@@ -171,7 +337,7 @@ class _ExploreArticle extends StatelessWidget {
 }
 
 class _Hint extends StatelessWidget {
-  const _Hint({required this.text});
+  const _Hint(this.text);
 
   final String text;
 
@@ -179,13 +345,13 @@ class _Hint extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Text(text,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-                color: Theme.of(context).colorScheme.outline,
-                height: 1.6,
-                fontSize: 13)),
+        padding: const EdgeInsets.all(16),
+        child: Text(
+          text,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+              fontSize: 12.5, height: 1.6, color: AppColors.textMuted),
+        ),
       ),
     );
   }

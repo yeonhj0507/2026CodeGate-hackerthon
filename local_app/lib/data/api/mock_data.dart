@@ -246,6 +246,85 @@ abstract final class MockData {
         ],
       ),
     ),
+    // 웨이브 1에서 추천했던 보충 기사를 실제로 읽고 온 회차.
+    // **미이해가 이해로 뒤집히는 유일한 웨이브**라, 경험치 규칙(`xp_rules.dart`)의
+    // 이해 전환·재도전 성공을 시연하려면 여기까지 동기화해야 한다.
+    MockWave(
+      articleTitle: '물가는 어떻게 측정할까 — CPI 읽는 법',
+      nodes: [
+        GraphNode(
+          id: 'c_명목금리',
+          concept: '명목금리',
+          state: NodeState.understood,
+          isPrereq: true,
+          sourceArticles: [
+            SourceArticle(
+              url: 'https://example.com/prober/cpi-explained',
+              title: '물가는 어떻게 측정할까 — CPI 읽는 법',
+            ),
+          ],
+          summaryMeta: '물가를 감안하지 않은, 겉으로 보이는 이자율입니다.',
+        ),
+        // 선행이 먼저 풀린다.
+        GraphNode(
+          id: 'c_물가상승률',
+          concept: '물가상승률',
+          state: NodeState.understood,
+          isPrereq: true,
+          sourceArticles: [
+            SourceArticle(
+              url: 'https://example.com/prober/fed-hold',
+              title: '미 연준, 기준금리 5.5% 동결… "인플레 둔화 확인 필요"',
+            ),
+            SourceArticle(
+              url: 'https://example.com/prober/cpi-explained',
+              title: '물가는 어떻게 측정할까 — CPI 읽는 법',
+            ),
+          ],
+          summaryMeta: 'CPI로 측정합니다. 장바구니 품목의 가격을 기준 시점과 견줘 계산해요.',
+        ),
+        // 그 위에서 원래 막혔던 개념이 뚫린다 → 재도전 성공.
+        GraphNode(
+          id: 'c_실질금리',
+          concept: '실질금리',
+          state: NodeState.understood,
+          isPrereq: false,
+          sourceArticles: [
+            SourceArticle(
+              url: 'https://example.com/prober/fed-hold',
+              title: '미 연준, 기준금리 5.5% 동결… "인플레 둔화 확인 필요"',
+            ),
+            SourceArticle(
+              url: 'https://example.com/prober/cpi-explained',
+              title: '물가는 어떻게 측정할까 — CPI 읽는 법',
+            ),
+          ],
+          summaryMeta: '명목금리 − 물가상승률. 두 선행을 모두 잡고 나서야 "금리를 동결했는데 '
+              '긴축 효과가 커졌다"가 읽힙니다.',
+        ),
+      ],
+      edges: [
+        GraphEdge(from: 'c_명목금리', to: 'c_실질금리'),
+      ],
+      recommendations: Recommendations(
+        gapConcepts: [
+          ConceptRecommendation(
+            conceptId: 'c_탄소배출권',
+            conceptTag: '탄소배출권',
+            reason: '‘CBAM’을 이해하려면 먼저 짚어야 하는 선행 개념입니다.',
+          ),
+        ],
+        expansionConcepts: [],
+        articles: [
+          ArticleRecommendation(
+            title: '금리가 오르면 왜 주가가 흔들리나',
+            url: 'https://example.com/prober/rates-and-stocks',
+            publisher: '한국경제',
+            reason: '‘실질금리’를 잡았으니 다음 갈래로',
+          ),
+        ],
+      ),
+    ),
   ];
 }
 

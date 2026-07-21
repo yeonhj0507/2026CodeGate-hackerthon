@@ -12,6 +12,7 @@ import '../data/dto/graph.dart';
 import '../data/dto/recommendation.dart';
 import '../data/repository/auth_repository.dart';
 import '../data/repository/thoughtmap_repository.dart';
+import '../data/xp/xp_rules.dart';
 
 // ── 인프라 ──────────────────────────────────────────────────
 
@@ -121,6 +122,7 @@ class SyncState {
     this.recommendations = Recommendations.empty,
     this.error,
     this.addedNodeCount,
+    this.xpGained = 0,
   });
 
   final bool inProgress;
@@ -131,12 +133,16 @@ class SyncState {
   /// 직전 동기화로 늘어난 노드 수(스낵바 안내용).
   final int? addedNodeCount;
 
+  /// 직전 동기화로 받은 XP(스낵바 안내용).
+  final int xpGained;
+
   SyncState copyWith({
     bool? inProgress,
     DateTime? lastSyncedAt,
     Recommendations? recommendations,
     AppException? error,
     int? addedNodeCount,
+    int? xpGained,
     bool clearError = false,
   }) {
     return SyncState(
@@ -145,6 +151,7 @@ class SyncState {
       recommendations: recommendations ?? this.recommendations,
       error: clearError ? null : (error ?? this.error),
       addedNodeCount: addedNodeCount ?? this.addedNodeCount,
+      xpGained: xpGained ?? this.xpGained,
     );
   }
 }
@@ -178,8 +185,12 @@ class SyncController extends StateNotifier<SyncState> {
         lastSyncedAt: result.syncedAt,
         recommendations: result.recommendations,
         addedNodeCount: result.addedNodeCount,
+        xpGained: result.xpGained,
         clearError: true,
       );
+      // 동기화가 XP를 적립했으므로 배지를 다시 읽는다(raw SQL 테이블이라
+      // drift 스트림이 자동으로 흘려주지 않는다).
+      await _ref.read(xpProvider.notifier).refresh();
     } on AppException catch (e) {
       state = state.copyWith(inProgress: false, error: e);
       if (e.isUnauthorized) {
@@ -197,14 +208,80 @@ final syncControllerProvider =
   return SyncController(ref.watch(thoughtmapRepositoryProvider), ref);
 });
 
-/// 그래프에서 사용자가 선택한 노드. null이면 상세 패널을 닫는다.
+/// 그래프에서 사용자가 선택한 노드. null이면 상세를 닫는다.
+///
+/// 지도 위 노드를 **탭**했을 때만 바뀐다. 탐색 키워드 담기([exploreKeywordProvider])
+/// 와는 완전히 독립이다 — 지도를 둘러보다 키워드가 저절로 쌓이면 안 된다.
 final selectedNodeIdProvider = StateProvider<String?>((ref) => null);
+
+// ── 우측 패널 ──────────────────────────────────────────────────────────────
+
+/// 우측 도킹 패널이 지금 보여주는 화면.
+///
+/// [closed]는 접힌 상태이고 앱 진입 시 기본값이다 — 처음엔 지도를 넓게 보여주고,
+/// 사용자가 아이콘을 눌러야 패널이 열린다.
+enum RightPanelMode { closed, recommendations, explore, archive }
+
+final rightPanelModeProvider =
+    StateProvider<RightPanelMode>((ref) => RightPanelMode.closed);
+
+/// 추천 탭에서 지금 인라인으로 펼친 개념 상세. null이면 목록만 보인다.
+///
+/// [selectedNodeIdProvider]와 별개로 둔다. 추천 목록에서 개념을 눌렀다고 해서
+/// 지도 선택이나 패널 모드가 따라 움직이면 안 되기 때문이다.
+final inlineConceptDetailProvider = StateProvider<String?>((ref) => null);
+
+// ── 경험치 ────────────────────────────────────────────────────────────────
+
+/// XP 현황. 적립은 동기화·앱 실행에서만 일어나므로 그때마다 [refresh]로 당긴다.
+class XpController extends StateNotifier<XpSnapshot> {
+  XpController(this._repo) : super(XpSnapshot.empty) {
+    refresh();
+  }
+
+  final ThoughtmapRepository _repo;
+
+  Future<void> refresh() async {
+    final snapshot = await _repo.loadXp();
+    if (mounted) state = snapshot;
+  }
+
+  /// 앱 실행 시 1회. 오늘 첫 접속이면 스트릭 XP가 붙는다.
+  Future<void> registerVisit() async {
+    await _repo.registerVisit();
+    await refresh();
+  }
+}
+
+final xpProvider = StateNotifierProvider<XpController, XpSnapshot>((ref) {
+  return XpController(ref.watch(thoughtmapRepositoryProvider));
+});
+
+/// 추천 탭 O/X 정답 처리 — 개념을 이해완료로 올리고 XP를 반영한다.
+///
+/// 그래프는 drift 스트림을 타고 [graphProvider]로 저절로 흘러나오지만, XP는
+/// raw SQL 테이블이라 배지를 직접 당겨야 한다(동기화 경로와 같은 사정).
+/// 지급된 이벤트를 돌려주므로 호출부가 "+N XP"를 안내할 수 있다.
+Future<List<XpEvent>> solveOxQuiz(WidgetRef ref, String nodeId) async {
+  final granted =
+      await ref.read(thoughtmapRepositoryProvider).markUnderstoodByOxQuiz(nodeId);
+  if (granted.isNotEmpty) await ref.read(xpProvider.notifier).refresh();
+  return granted;
+}
 
 // ── 탐색 탭 ────────────────────────────────────────────────────────────────
 
 /// 탐색용으로 고른 키워드(노드 id). 2~3개를 묶어 "더 탐색하기"에 넘긴다.
-final exploreSelectionProvider =
-    StateProvider<Set<String>>((ref) => <String>{});
+///
+/// 지도에서 노드를 **길게 눌러 끌어다** 탐색 패널에 놓으면 채워진다. 순서가 곧
+/// 사용자가 담은 순서라 Set 이 아니라 List 다.
+final exploreKeywordProvider = StateProvider<List<String>>((ref) => const []);
+
+/// "더 탐색하기"를 눌러 결과를 펼쳤는지 여부.
+///
+/// 키워드 구성이 바뀌면 다시 접는다. 고른 키워드와 화면에 떠 있는 설명이
+/// 어긋난 채로 남지 않게 하려는 것 — 결과는 항상 버튼을 눌러 갱신한다.
+final exploreRevealedProvider = StateProvider<bool>((ref) => false);
 
 /// "더 탐색하기" 결과. 요청 전에는 null, 요청 중에는 loading.
 class ExploreController extends StateNotifier<AsyncValue<ExploreResult?>> {

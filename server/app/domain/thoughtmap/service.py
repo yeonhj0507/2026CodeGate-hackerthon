@@ -10,6 +10,7 @@ from app.domain.llm.base import ConceptContext, LlmProvider
 from app.domain.models import TempScrap
 from app.domain.schemas import (
     STATE_NOT_UNDERSTOOD,
+    STATE_UNDERSTOOD,
     Graph,
     ThoughtmapUpdateRequest,
     ThoughtmapUpdateResponse,
@@ -72,16 +73,25 @@ async def update_thoughtmap(
 
 
 async def _attach_summaries(graph: Graph, llm: LlmProvider) -> None:
-    """미이해 노드 중 아직 설명이 없는 것만 LLM 1회 배치 호출로 채운다.
+    """**진단된** 노드 중 아직 설명이 없는 것을 LLM 1회 배치 호출로 채운다.
 
     서버는 기사 원문을 보관하지 않으므로(명세 §4.4 ⚠️) 재요약의 근거는 원문이 아니라
     **개념 관계(선행/후행) + 진단 결과 + 기사 제목**이다. 그 근거를 여기서 조립한다.
+
+    미이해뿐 아니라 이해완료 노드도 대상이다. 로컬앱의 노드 상세는 상태를 따지지 않고
+    `summaryMeta` 가 있으면 보여주므로(node_detail_panel), 여기서 채워 보내면 맞힌
+    개념에도 설명이 붙는다. 진단되지 않은(unknown) 노드는 제외한다 — 추천으로만 등장한
+    노드라 할 말이 "정의"밖에 없고, MAX_SUMMARIES 자리를 축낸다.
     """
-    targets = [
+    pending = [
         n
         for n in graph.nodes
-        if n.state == STATE_NOT_UNDERSTOOD and not n.summaryMeta
-    ][:MAX_SUMMARIES]
+        if n.state in (STATE_NOT_UNDERSTOOD, STATE_UNDERSTOOD) and not n.summaryMeta
+    ]
+    # 후보가 두 배로 늘었으므로 MAX_SUMMARIES 에서 잘릴 일이 잦아졌다. 막힌 개념이
+    # 맞힌 개념에 밀려 설명 없이 남는 게 최악이라 미이해를 앞에 세운다.
+    pending.sort(key=lambda n: n.state != STATE_NOT_UNDERSTOOD)
+    targets = pending[:MAX_SUMMARIES]
     if not targets:
         return
 
@@ -98,6 +108,7 @@ async def _attach_summaries(graph: Graph, llm: LlmProvider) -> None:
         ConceptContext(
             concept=n.concept,
             is_prereq=n.isPrereq,
+            understood=n.state == STATE_UNDERSTOOD,
             parent_concepts=parents.get(n.id, []),
             prereq_concepts=prereqs.get(n.id, []),
             source_titles=[s.title for s in n.sourceArticles if s.title],
