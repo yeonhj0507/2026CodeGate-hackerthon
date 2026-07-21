@@ -197,12 +197,48 @@ final syncControllerProvider =
   return SyncController(ref.watch(thoughtmapRepositoryProvider), ref);
 });
 
-/// 그래프에서 사용자가 선택한 노드. null이면 상세 패널을 닫는다.
+/// 그래프에서 사용자가 선택한 노드. null이면 상세를 닫는다.
+///
+/// 지도 위 노드를 **탭**했을 때만 바뀐다. 탐색 키워드 담기([exploreKeywordProvider])
+/// 와는 완전히 독립이다 — 지도를 둘러보다 키워드가 저절로 쌓이면 안 된다.
 final selectedNodeIdProvider = StateProvider<String?>((ref) => null);
+
+// ── 우측 패널 ──────────────────────────────────────────────────────────────
+
+/// 우측 도킹 패널이 지금 보여주는 화면.
+///
+/// [closed]는 접힌 상태이고 앱 진입 시 기본값이다 — 처음엔 지도를 넓게 보여주고,
+/// 사용자가 아이콘을 눌러야 패널이 열린다.
+enum RightPanelMode { closed, recommendations, explore, archive }
+
+final rightPanelModeProvider =
+    StateProvider<RightPanelMode>((ref) => RightPanelMode.closed);
+
+/// 추천 탭에서 지금 인라인으로 펼친 개념 상세. null이면 목록만 보인다.
+///
+/// [selectedNodeIdProvider]와 별개로 둔다. 추천 목록에서 개념을 눌렀다고 해서
+/// 지도 선택이나 패널 모드가 따라 움직이면 안 되기 때문이다.
+final inlineConceptDetailProvider = StateProvider<String?>((ref) => null);
 
 // ── 탐색 탭 ────────────────────────────────────────────────────────────────
 
 /// 탐색용으로 고른 키워드(노드 id). 2~3개를 묶어 "더 탐색하기"에 넘긴다.
+///
+/// 지도에서 노드를 **길게 눌러 끌어다** 탐색 패널에 놓으면 채워진다. 순서가 곧
+/// 사용자가 담은 순서라 Set 이 아니라 List 다.
+final exploreKeywordProvider = StateProvider<List<String>>((ref) => const []);
+
+/// "더 탐색하기"를 눌러 결과를 펼쳤는지 여부.
+///
+/// 키워드 구성이 바뀌면 다시 접는다. 고른 키워드와 화면에 떠 있는 설명이
+/// 어긋난 채로 남지 않게 하려는 것 — 결과는 항상 버튼을 눌러 갱신한다.
+final exploreRevealedProvider = StateProvider<bool>((ref) => false);
+
+/// 탐색용으로 고른 키워드(구버전 — 칩 다중선택 시절).
+///
+/// 드래그 방식([exploreKeywordProvider])으로 옮겨 가는 중이라 explore_panel 이
+/// 이식되면(5단계) 지운다. 그 전까지 화면이 컴파일되게 남겨 둔다.
+@Deprecated('exploreKeywordProvider 로 대체 — explore_panel 이식 시 제거')
 final exploreSelectionProvider =
     StateProvider<Set<String>>((ref) => <String>{});
 
