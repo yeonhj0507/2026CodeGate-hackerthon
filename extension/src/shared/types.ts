@@ -106,6 +106,11 @@ export type ChromeMessage =
   | { type: 'LOGIN_ERROR'; error: string }
   | { type: 'LOGOUT' }
   | { type: 'LOGOUT_RESPONSE' }
+  // 팝업 → content script. 사용자가 "이 기사에서 시작"을 눌렀을 때만 세션이 열린다.
+  // (자동 실행하지 않는 이유: 원하는 기사에서만 패널이 뜨게 하기 위함)
+  | { type: 'START_SESSION' }
+  | { type: 'SESSION_STARTED' }
+  | { type: 'SESSION_UNAVAILABLE'; reason: string }
 
 // ─── Session 상태머신 (Stream B: session.ts ↔ ui/) ──────────────────────────
 

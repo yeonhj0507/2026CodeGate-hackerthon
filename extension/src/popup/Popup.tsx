@@ -128,6 +128,8 @@ function LoginForm({ onSignedIn }: { onSignedIn: () => void }) {
 
 function SignedIn({ email, onSignedOut }: { email: string; onSignedOut: () => void }) {
   const [busy, setBusy] = useState(false)
+  const [starting, setStarting] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
 
   async function signOut() {
     setBusy(true)
@@ -135,15 +137,56 @@ function SignedIn({ email, onSignedOut }: { email: string; onSignedOut: () => vo
     onSignedOut()
   }
 
+  /** 현재 탭의 content script 에 세션 시작을 요청한다(사용자가 고른 기사에서만 열림). */
+  async function startSession() {
+    if (starting) return
+    setStarting(true)
+    setNotice(null)
+
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+      if (tab?.id === undefined) throw new Error('no tab')
+
+      const res = (await chrome.tabs.sendMessage(tab.id, {
+        type: 'START_SESSION',
+      } satisfies ChromeMessage)) as ChromeMessage
+
+      if (res?.type === 'SESSION_STARTED') {
+        window.close() // 패널이 떴으니 팝업은 비켜준다
+        return
+      }
+      setNotice(res?.type === 'SESSION_UNAVAILABLE' ? res.reason : '시작하지 못했습니다.')
+    } catch {
+      // content script 가 없는 페이지(크롬 내부 페이지·스토어 등)
+      setNotice('이 페이지에서는 사용할 수 없습니다.')
+    } finally {
+      setStarting(false)
+    }
+  }
+
   return (
     <Shell>
-      <p style={{ fontSize: 13, margin: '0 0 4px' }}>
+      <p style={{ fontSize: 13, margin: '0 0 10px' }}>
         <span style={styles.muted}>로그인됨</span>
         <br />
         <strong>{email || '사용자'}</strong>
       </p>
-      <p style={styles.muted}>기사를 읽으면 프로버가 배경지식을 짚어줍니다.</p>
-      <button type="button" disabled={busy} onClick={signOut} style={styles.linkBtn}>
+
+      <button type="button" disabled={starting} onClick={startSession} style={styles.primaryBtn}>
+        {starting ? '여는 중…' : '이 기사에서 시작'}
+      </button>
+      <p style={{ ...styles.muted, marginTop: 8 }}>
+        읽고 싶은 기사를 연 뒤 눌러주세요. 스크롤하며 질문이 나타납니다.
+      </p>
+
+      {notice && <div style={{ ...styles.error, marginTop: 8 }}>{notice}</div>}
+
+      <button
+        type="button"
+        disabled={busy}
+        onClick={signOut}
+        style={{ ...styles.linkBtn, marginTop: 10 }}
+      >
         {busy ? '로그아웃 중…' : '로그아웃'}
       </button>
     </Shell>

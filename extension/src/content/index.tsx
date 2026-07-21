@@ -18,7 +18,7 @@
 // =============================================================================
 
 import { extractArticle } from './extractor'
-import { isNonArticleUrl, looksLikeArticleList } from './page-gate'
+import { isNonArticleUrl } from './page-gate'
 import { anchorQuizzes } from './anchor'
 import { createParagraphObserver } from './observer'
 import { createSessionQueue } from './session-bind'
@@ -39,25 +39,31 @@ async function requestQuiz(title: string, body: string): Promise<Quiz[]> {
   throw new Error('unexpected quiz response')
 }
 
-async function boot(): Promise<void> {
+/** boot 결과. 실패 사유는 팝업이 사용자에게 그대로 보여준다. */
+type BootResult = { ok: true } | { ok: false; reason: string }
+
+async function boot(): Promise<BootResult> {
   // 0) URL 게이트: 언론사 메인/섹션 페이지면 추출조차 하지 않는다(§page-gate).
-  if (isNonArticleUrl(location.href)) return
+  if (isNonArticleUrl(location.href)) {
+    return { ok: false, reason: '기사 페이지가 아닙니다. 기사를 연 뒤 다시 눌러주세요.' }
+  }
 
   // 1) 본문 추출 + 기사 품질 게이트.
   const extract = extractArticle()
-  if (!extract || extract.paragraphs.length < MIN_ARTICLE_PARAGRAPHS) return
+  if (!extract || extract.paragraphs.length < MIN_ARTICLE_PARAGRAPHS) {
+    return { ok: false, reason: '이 페이지에서 기사 본문을 찾지 못했습니다.' }
+  }
 
-  // 1b) 구조 게이트: 문단이 기사 카드마다 흩어져 있으면 목록 페이지로 보고 중단.
-  if (looksLikeArticleList(extract.paragraphs)) return
-
-  // 2) 퀴즈 트리 요청. 실패/빈 응답이면 패널 없이 조용히 중단(MVP, 페이지 내 에러 UI 없음).
+  // 2) 퀴즈 트리 요청. 실패·빈 응답이면 패널 없이 중단.
   let quizzes: Quiz[]
   try {
     quizzes = await requestQuiz(extract.title, extract.body)
   } catch {
-    return
+    return { ok: false, reason: '질문을 만들지 못했습니다. 잠시 후 다시 시도해주세요.' }
   }
-  if (quizzes.length === 0) return
+  if (quizzes.length === 0) {
+    return { ok: false, reason: '이 기사에서 낼 질문을 찾지 못했습니다.' }
+  }
 
   // 3) 앵커 매칭.
   const anchor = anchorQuizzes(quizzes, extract.paragraphs)
@@ -111,6 +117,31 @@ async function boot(): Promise<void> {
   observer.observe(watched)
 
   // MVP: SPA 재이동/이탈 teardown은 Step 10 여력 시.
+  return { ok: true }
 }
 
-void boot()
+// ─── 활성화 대기 ─────────────────────────────────────────────────────────────
+// 자동 실행하지 않는다. 사용자가 팝업에서 "이 기사에서 시작"을 눌러야 세션이 열린다.
+// (원하는 기사에서만 패널이 뜨게 하고, 목록 페이지 오작동을 원천 차단하기 위함)
+
+let sessionStarted = false
+
+chrome.runtime.onMessage.addListener((message: ChromeMessage, _sender, sendResponse) => {
+  if (message.type !== 'START_SESSION') return undefined
+
+  if (sessionStarted) {
+    sendResponse({ type: 'SESSION_UNAVAILABLE', reason: '이미 이 기사에서 실행 중입니다.' })
+    return undefined
+  }
+
+  void boot().then((result) => {
+    if (result.ok) {
+      sessionStarted = true
+      sendResponse({ type: 'SESSION_STARTED' })
+    } else {
+      sendResponse({ type: 'SESSION_UNAVAILABLE', reason: result.reason })
+    }
+  })
+
+  return true // 비동기 응답
+})

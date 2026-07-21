@@ -14,7 +14,7 @@
 
 import { JSDOM } from 'jsdom'
 import { extractArticle, PROBER_IDX_ATTR } from '../src/content/extractor'
-import { isNonArticleUrl, looksLikeArticleList } from '../src/content/page-gate'
+import { isNonArticleUrl } from '../src/content/page-gate'
 
 // ─── 픽스처 본문 (실제 기사풍 한국어, 문단당 20자 이상) ──────────────────────
 
@@ -213,20 +213,18 @@ console.log('\n[페이지 게이트 — URL]')
   check('위키백과는 판단 보류', isNonArticleUrl('https://ko.wikipedia.org/wiki/기준금리'), false)
 }
 
-console.log('\n[페이지 게이트 — 구조]')
+console.log('\n[사용자가 보고한 실제 기사 URL — 열려야 한다]')
 {
-  const list = extractArticle(listPageLike())
-  const article = extractArticle(naverLike())
-  const yonhap = extractArticle(yonhapLike())
+  check('네이버 기사', isNonArticleUrl('https://n.news.naver.com/mnews/article/023/0003988697'), false)
+  check('매경 기사', isNonArticleUrl('https://www.mk.co.kr/news/economy/12103563'), false)
+}
 
+// 문단마다 wrapper div 를 두는 기사(매일경제형)도 추출은 정상이어야 한다.
+// (한때 DOM 구조로 목록을 판별하려다 이 형태를 목록으로 오판해 패널이 사라졌었다.)
+{
   const wrapped = extractArticle(perParagraphWrapperArticle())
-
-  check('목록형은 목록으로 판정', looksLikeArticleList(list?.paragraphs ?? []), true)
-  check('네이버형 기사는 통과', looksLikeArticleList(article?.paragraphs ?? []), false)
-  check('연합형 기사는 통과', looksLikeArticleList(yonhap?.paragraphs ?? []), false)
-  // 회귀: 문단마다 wrapper div 가 있는 기사(매일경제형)를 목록으로 오판하면 안 된다.
-  check('문단별 wrapper 기사는 통과', looksLikeArticleList(wrapped?.paragraphs ?? []), false)
-  check('문단 적으면 판정 보류', looksLikeArticleList((article?.paragraphs ?? []).slice(0, 4)), false)
+  console.log('\n[문단별 wrapper 기사]')
+  check('문단이 정상 추출된다', wrapped?.paragraphs.length, BODY_SENTENCES.length)
 }
 
 console.log('\n' + '='.repeat(78))
