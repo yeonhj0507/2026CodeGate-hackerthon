@@ -28,7 +28,7 @@ server/
 │     ├─ scrap/          # 버퍼 append · TTL/상한 정리
 │     ├─ thoughtmap/     # merge(순수) · recommend · service(트랜잭션)
 │     └─ llm/            # base(프로토콜) · mock · claude · prompts
-├─ alembic/              # 마이그레이션 (0001 users → 0002 도메인 테이블)
+├─ alembic/              # 마이그레이션 (0001 users → 0002 도메인 테이블 → 0003 스크랩 URL화)
 ├─ seed/                 # 제휴 기사 데이터셋
 ├─ scripts/              # seed.py · demo_flow.py
 └─ tests/
@@ -108,5 +108,6 @@ python scripts/demo_flow.py   # 로그인 → 흐름 A → 흐름 B 엔드투엔
 직접 지운다(기획서 §6 '탈퇴 시 즉시 파기'). 회귀 테스트는 `tests/test_account_deletion.py`.
 
 > **도메인 테이블을 추가하면 `delete_user()` 에도 삭제를 함께 넣어야 한다.**
-> 빠뜨리면 탈퇴 후에도 기사 원문·답변 기록이 버퍼 TTL(기본 7일) 동안 서버에 남아
-> "원문을 서버에 보관하지 않는다"는 전제가 깨진다.
+> 빠뜨리면 탈퇴 후에도 학습 기록(개념 태그·정답/오답)이 버퍼 TTL(기본 7일) 동안 서버에 남아
+> "학습 데이터는 로컬이 소유한다"는 전제가 깨진다.
+> (명세 개정 이후 원문은 애초에 버퍼에 들어오지 않는다 — `temp_scraps` 에 원문 컬럼이 없다.)
