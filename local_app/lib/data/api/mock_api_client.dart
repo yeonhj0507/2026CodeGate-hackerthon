@@ -107,10 +107,9 @@ class MockApiClient implements ApiClient {
           ? incoming
           : existing.copyWith(
               state: incoming.state,
-              sourceArticles: {
-                ...existing.sourceArticles,
-                ...incoming.sourceArticles,
-              }.toList(),
+              sourceArticles: SourceArticle.mergeAll(
+                [...existing.sourceArticles, ...incoming.sourceArticles],
+              ),
               summaryMeta: incoming.summaryMeta ?? existing.summaryMeta,
             );
     }
