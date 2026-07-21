@@ -12,6 +12,7 @@ import '../data/dto/graph.dart';
 import '../data/dto/recommendation.dart';
 import '../data/repository/auth_repository.dart';
 import '../data/repository/thoughtmap_repository.dart';
+import '../data/xp/xp_rules.dart';
 
 // ── 인프라 ──────────────────────────────────────────────────
 
@@ -121,6 +122,7 @@ class SyncState {
     this.recommendations = Recommendations.empty,
     this.error,
     this.addedNodeCount,
+    this.xpGained = 0,
   });
 
   final bool inProgress;
@@ -131,12 +133,16 @@ class SyncState {
   /// 직전 동기화로 늘어난 노드 수(스낵바 안내용).
   final int? addedNodeCount;
 
+  /// 직전 동기화로 받은 XP(스낵바 안내용).
+  final int xpGained;
+
   SyncState copyWith({
     bool? inProgress,
     DateTime? lastSyncedAt,
     Recommendations? recommendations,
     AppException? error,
     int? addedNodeCount,
+    int? xpGained,
     bool clearError = false,
   }) {
     return SyncState(
@@ -145,6 +151,7 @@ class SyncState {
       recommendations: recommendations ?? this.recommendations,
       error: clearError ? null : (error ?? this.error),
       addedNodeCount: addedNodeCount ?? this.addedNodeCount,
+      xpGained: xpGained ?? this.xpGained,
     );
   }
 }
@@ -178,8 +185,12 @@ class SyncController extends StateNotifier<SyncState> {
         lastSyncedAt: result.syncedAt,
         recommendations: result.recommendations,
         addedNodeCount: result.addedNodeCount,
+        xpGained: result.xpGained,
         clearError: true,
       );
+      // 동기화가 XP를 적립했으므로 배지를 다시 읽는다(raw SQL 테이블이라
+      // drift 스트림이 자동으로 흘려주지 않는다).
+      await _ref.read(xpProvider.notifier).refresh();
     } on AppException catch (e) {
       state = state.copyWith(inProgress: false, error: e);
       if (e.isUnauthorized) {
@@ -219,6 +230,32 @@ final rightPanelModeProvider =
 /// [selectedNodeIdProvider]와 별개로 둔다. 추천 목록에서 개념을 눌렀다고 해서
 /// 지도 선택이나 패널 모드가 따라 움직이면 안 되기 때문이다.
 final inlineConceptDetailProvider = StateProvider<String?>((ref) => null);
+
+// ── 경험치 ────────────────────────────────────────────────────────────────
+
+/// XP 현황. 적립은 동기화·앱 실행에서만 일어나므로 그때마다 [refresh]로 당긴다.
+class XpController extends StateNotifier<XpSnapshot> {
+  XpController(this._repo) : super(XpSnapshot.empty) {
+    refresh();
+  }
+
+  final ThoughtmapRepository _repo;
+
+  Future<void> refresh() async {
+    final snapshot = await _repo.loadXp();
+    if (mounted) state = snapshot;
+  }
+
+  /// 앱 실행 시 1회. 오늘 첫 접속이면 스트릭 XP가 붙는다.
+  Future<void> registerVisit() async {
+    await _repo.registerVisit();
+    await refresh();
+  }
+}
+
+final xpProvider = StateNotifierProvider<XpController, XpSnapshot>((ref) {
+  return XpController(ref.watch(thoughtmapRepositoryProvider));
+});
 
 // ── 탐색 탭 ────────────────────────────────────────────────────────────────
 

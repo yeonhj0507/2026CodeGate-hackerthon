@@ -105,6 +105,26 @@ class MockProvider:
     async def summarize_concepts(self, items: list[ConceptContext]) -> dict[str, str]:
         out: dict[str, str] = {}
         for item in items:
+            # 실제 프롬프트와 같은 갈래: 미이해는 막힌 지점을, 이해완료는 발판을 짚는다.
+            if item.understood:
+                parts = [f"{item.concept}: 진단에서 맞힌 개념이다."]
+                if item.parent_concepts:
+                    parts.append(
+                        f"이걸 발판으로 「{', '.join(item.parent_concepts)}」까지 볼 수 있다."
+                    )
+                if item.prereq_concepts:
+                    parts.append(
+                        f"「{', '.join(item.prereq_concepts)}」 위에 얹힌 개념이다."
+                    )
+                if item.is_prereq:
+                    parts.append("선행 층을 잡아둔 셈이라 위쪽 갈래로 넘어가도 좋다.")
+                if item.source_titles:
+                    parts.append(
+                        f"「{item.source_titles[0]}」 등 {len(item.source_titles)}개 기사에서 만났다."
+                    )
+                out[item.concept] = " ".join(parts)
+                continue
+
             parts = [f"{item.concept}: 진단에서 막힌 개념이다."]
             if item.parent_concepts:
                 parts.append(

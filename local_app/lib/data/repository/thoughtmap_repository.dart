@@ -2,6 +2,7 @@ import '../api/api_client.dart';
 import '../db/database.dart';
 import '../dto/graph.dart';
 import '../dto/recommendation.dart';
+import '../xp/xp_rules.dart';
 
 /// 한 번의 동기화 결과.
 class SyncResult {
@@ -10,6 +11,7 @@ class SyncResult {
     required this.recommendations,
     required this.syncedAt,
     required this.addedNodeCount,
+    this.xpEvents = const [],
   });
 
   final Graph graph;
@@ -18,6 +20,12 @@ class SyncResult {
 
   /// 이번 동기화로 새로 생긴 노드 수. "스크랩이 반영됐다"를 UI로 보여주는 근거.
   final int addedNodeCount;
+
+  /// 이번 동기화로 **실제 지급된** XP 사건들(이미 받은 건 빠져 있다).
+  final List<XpEvent> xpEvents;
+
+  int get xpGained =>
+      xpEvents.fold(0, (sum, e) => sum + e.amount);
 }
 
 /// 흐름 B — 생각 지도 업데이트(명세 §6).
@@ -47,7 +55,15 @@ class ThoughtmapRepository {
     // 서버 응답을 로컬 원본으로 채택(구현계획③ §3.2).
     await _db.replaceGraph(res.graph);
     await _db.recordSyncOutcome(res.graph);
-    await _db.recordAppliedScraps(res.graph);
+    final newArticles = await _db.recordAppliedScraps(res.graph);
+
+    // XP는 여기서만 판정한다. 익스텐션도 서버도 XP를 모른다 —
+    // 동기화 전후 그래프의 차이가 곧 "사용자가 무엇을 해냈는가"다.
+    final granted = await _db.awardXp(evaluateGraphXp(
+      before: localGraph,
+      after: res.graph,
+      newArticles: newArticles,
+    ));
 
     final before = localGraph.nodes.map((n) => n.id).toSet();
     final added = res.graph.nodes.where((n) => !before.contains(n.id)).length;
@@ -57,8 +73,28 @@ class ThoughtmapRepository {
       recommendations: res.recommendations,
       syncedAt: DateTime.now(),
       addedNodeCount: added,
+      xpEvents: granted,
     );
   }
 
   Future<List<AppliedScrapRow>> appliedScraps() => _db.loadAppliedScraps();
+
+  // ── 경험치 ──────────────────────────────────────────────────
+
+  /// 앱을 연 사실을 남기고, 오늘 첫 접속이면 스트릭 XP를 준다.
+  Future<VisitOutcome> registerVisit() async {
+    final visit = await _db.recordVisit(DateTime.now());
+    if (visit.isFirstToday) {
+      await _db.awardXp([
+        XpEvent.of(
+          XpKind.streakDay,
+          dedupeKey: 'streak:${visit.dayKey}',
+          detail: '${visit.streak}일 연속 접속',
+        ),
+      ]);
+    }
+    return visit;
+  }
+
+  Future<XpSnapshot> loadXp() => _db.loadXpSummary();
 }

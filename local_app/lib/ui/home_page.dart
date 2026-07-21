@@ -12,6 +12,7 @@ import 'node_detail_card.dart';
 import 'onboarding_view.dart';
 import 'recommendation_panel.dart';
 import 'widgets/logo_mark.dart';
+import 'xp_panel.dart';
 
 /// 홈 — 좌측 생각 지도, 우측 도킹 패널(추천/탐색/보관함 전환).
 class HomePage extends ConsumerStatefulWidget {
@@ -27,6 +28,9 @@ class _HomePageState extends ConsumerState<HomePage> {
     super.initState();
     // 트리거 ①: 앱 실행 시 최초 1회 자동 동기화(명세 §5.2). 폴링은 하지 않는다.
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      // 접속 기록이 먼저다 — 스트릭 XP를 찍고 나서 동기화 XP가 얹혀야
+      // 배지가 한 번만 튀고 최종값으로 안착한다.
+      ref.read(xpProvider.notifier).registerVisit();
       ref.read(syncControllerProvider.notifier).syncOnLaunch();
     });
   }
@@ -86,12 +90,20 @@ class _HomePageState extends ConsumerState<HomePage> {
       if (next.error != null) return;
       final added = next.addedNodeCount ?? 0;
       if (!mounted) return;
+      final xp = next.xpGained;
+      final base = added > 0
+          ? '새 개념 $added개가 생각 지도에 반영됐어요.'
+          : '반영할 새 진단 기록이 없습니다.';
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           duration: const Duration(seconds: 3),
-          content: Text(added > 0
-              ? '새 개념 $added개가 생각 지도에 반영됐어요.'
-              : '반영할 새 진단 기록이 없습니다.'),
+          content: Text(xp > 0 ? '$base  +$xp XP' : base),
+          action: xp > 0
+              ? SnackBarAction(
+                  label: '내역',
+                  onPressed: () => showXpSheet(context),
+                )
+              : null,
         ),
       );
     });
@@ -116,6 +128,9 @@ class _TopBar extends ConsumerWidget {
           _GraphStats(graph: graph),
         ],
         const Spacer(),
+        // 경험치 배지 — 눌러서 적립 내역을 연다.
+        const XpBadge(),
+        const SizedBox(width: 12),
         if (AppConfig.useMock) ...[
           const _MockBadge(),
           const SizedBox(width: 12),
