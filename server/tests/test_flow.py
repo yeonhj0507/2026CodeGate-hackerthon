@@ -43,8 +43,13 @@ async def test_scrap_then_sync_consumes_buffer(client):
     assert nodes["환율"]["state"] == "understood"
     assert nodes["통화정책"]["isPrereq"] is True
 
-    # 미이해 노드에는 개인화 요약이 붙는다(명세 §4.4).
+    # 진단된 노드에는 개인화 요약이 붙는다(명세 §4.4). 미이해뿐 아니라 이해완료도 —
+    # 로컬앱 노드 상세는 상태를 안 따지고 summaryMeta 가 있으면 보여준다.
     assert nodes["통화정책"]["summaryMeta"]
+    assert nodes["환율"]["summaryMeta"]
+    # 다만 설명의 방향은 갈린다. 맞힌 개념에 "막혔다"고 쓰지 않는다.
+    assert "막힌" not in nodes["환율"]["summaryMeta"]
+    assert "막힌" in nodes["통화정책"]["summaryMeta"]
 
     # 크로스기사: 기준금리가 두 기사(다른 URL)에서 등장 → 출처 누적.
     sources = nodes["기준금리"]["sourceArticles"]
