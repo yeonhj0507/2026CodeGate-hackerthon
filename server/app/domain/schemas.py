@@ -79,6 +79,16 @@ class ScrapResult(Strict):
     correctOption: str | None = None
 
 
+class ConceptRelation(Strict):
+    """퀴즈 트리가 품고 있던 선행→후행 관계 한 줄.
+
+    `from_`(선행)을 알아야 `to`(후행)를 이해한다. 방향은 `GraphEdge` 와 같다.
+    """
+
+    from_: str = Field(alias="from")
+    to: str
+
+
 class ScrapRequest(Strict):
     """스크랩 페이로드에는 **기사 원문이 없다**(명세 §3.4).
 
@@ -89,6 +99,13 @@ class ScrapRequest(Strict):
     articleUrl: str
     articleTitle: str
     results: list[ScrapResult]
+    # 퀴즈 트리에 이미 들어 있던 선행 관계. **정답·오답과 무관하게** 보낸다.
+    #
+    # 이게 없으면 엣지는 사용자가 틀려서 재질문으로 내려갔을 때만 생긴다
+    # (merge.py 의 parentConcept 경로). 다 맞히면 개념이 전부 고립되고, 엣지를
+    # 훑는 결핍·확장 추천까지 함께 굶는다. LLM 이 이미 만들어 둔 관계라
+    # 추가 호출 비용이 없다. 구버전 익스텐션 호환을 위해 optional.
+    relations: list[ConceptRelation] = Field(default_factory=list)
 
 
 class ScrapResponse(Strict):

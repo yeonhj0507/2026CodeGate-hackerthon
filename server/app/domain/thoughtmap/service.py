@@ -47,6 +47,7 @@ async def update_thoughtmap(
             article_url=r.article_url,
             article_title=r.article_title,
             results=r.results or [],
+            relations=r.relations or [],
         )
         for r in rows
     ]

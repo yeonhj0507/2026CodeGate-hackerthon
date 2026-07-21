@@ -82,10 +82,28 @@ export interface QuizResponse {
  * 원문은 /quiz 요청에서 이미 보냈으므로 재전송하지 않고, 출처 식별은 URL로만 한다.
  * 서버에 원문이 영속되는 지점을 없애기 위한 결정이다. articleBody 를 보내면 422.
  */
+/**
+ * 퀴즈 트리가 품고 있던 선행→후행 관계 한 줄. from(선행)을 알아야 to(후행)를 이해한다.
+ */
+export interface ConceptRelation {
+  from: string
+  to: string
+}
+
 export interface ScrapRequest {
   articleUrl: string
   articleTitle: string
   results: ScrapResult[]
+
+  /**
+   * 퀴즈 트리의 선행 관계. **정답·오답과 무관하게** 보낸다.
+   *
+   * 서버 엣지는 원래 parentConcept 로만 생겼는데, parentConcept 는 오답으로
+   * 재질문에 내려갔을 때만 채워진다. 그래서 다 맞힌 세션에서는 개념이 전부
+   * 고립되고, 엣지를 훑는 결핍·확장 추천까지 함께 굶었다. 관계는 출제 시점에
+   * 이미 정해져 있으니(LLM 재호출 없음) 답과 무관하게 실어 보낸다.
+   */
+  relations: ConceptRelation[]
 }
 
 export interface ScrapResponse {
