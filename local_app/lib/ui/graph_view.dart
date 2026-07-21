@@ -4,6 +4,7 @@ import 'package:graphview/GraphView.dart' as gv;
 
 import '../data/dto/graph.dart';
 import '../providers/providers.dart';
+import 'app_colors.dart';
 
 /// 생각 지도 시각화(명세 §5.1 "뇌 지도").
 ///
@@ -85,8 +86,8 @@ class _ThoughtMapViewState extends ConsumerState<ThoughtMapView> {
         to,
         paint: Paint()
           ..color = e.type == EdgeType.prereq
-              ? const Color(0xFF5A6180)
-              : const Color(0xFF39405C)
+              ? const Color(0xFFD9D2C8)
+              : const Color(0xFFE8E2D8)
           ..strokeWidth = e.type == EdgeType.prereq ? 1.6 : 1.0
           ..style = PaintingStyle.stroke,
       );
@@ -185,6 +186,10 @@ class _AllNodesDelegate extends gv.GraphChildDelegate {
 /// 테두리 두께가 바뀌면 노드 크기가 달라져 Sugiyama 레이아웃이 다시 돌고
 /// 지도 전체가 튄다. 그래서 두께는 고정하고 색과 그림자(레이아웃에 영향 없음)로만
 /// 선택을 표시한다.
+///
+/// 짧게 누르면(탭) 노드가 선택되고, 길게 눌러 끌면(드래그) "탐색" 탭의 키워드로
+/// 담긴다. 두 액션은 완전히 독립적이다 — 탭이 탐색 선택까지 건드리면 지도를
+/// 둘러보다가 의도치 않게 키워드가 쌓인다.
 class _ConceptNode extends ConsumerWidget {
   const _ConceptNode({required this.node});
 
@@ -196,54 +201,79 @@ class _ConceptNode extends ConsumerWidget {
     final selected =
         ref.watch(selectedNodeIdProvider.select((id) => id == node.id));
 
-    return GestureDetector(
-      onTap: () => ref.read(selectedNodeIdProvider.notifier).state =
-          selected ? null : node.id,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        constraints: const BoxConstraints(maxWidth: 190),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-          color: style.fill,
-          borderRadius: BorderRadius.circular(node.isPrereq ? 20 : 10),
-          border: Border.all(
-            color: selected ? Colors.white : style.border,
-            width: 1.8,
-          ),
-          boxShadow: selected
-              ? [
-                  BoxShadow(
-                    color: style.border.withValues(alpha: 0.5),
-                    blurRadius: 14,
-                    spreadRadius: 1,
-                  ),
-                ]
-              : null,
+    final content = AnimatedContainer(
+      duration: const Duration(milliseconds: 150),
+      constraints: const BoxConstraints(maxWidth: 190),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: style.fill,
+        borderRadius: BorderRadius.circular(node.isPrereq ? 20 : 10),
+        border: Border.all(
+          color: selected ? AppColors.pink : style.border,
+          width: 1.8,
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+        boxShadow: selected
+            ? [
+                BoxShadow(
+                  color: style.border.withValues(alpha: 0.35),
+                  blurRadius: 14,
+                  spreadRadius: 1,
+                ),
+              ]
+            : null,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            node.concept,
+            style: TextStyle(
+              color: style.text,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          if (node.isPrereq) ...[
+            const SizedBox(height: 3),
             Text(
-              node.concept,
+              '선행개념',
               style: TextStyle(
-                color: style.text,
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
+                color: style.text.withValues(alpha: 0.65),
+                fontSize: 10,
               ),
             ),
-            if (node.isPrereq) ...[
-              const SizedBox(height: 3),
-              Text(
-                '선행개념',
-                style: TextStyle(
-                  color: style.text.withValues(alpha: 0.65),
-                  fontSize: 10,
-                ),
-              ),
-            ],
           ],
+        ],
+      ),
+    );
+
+    return LongPressDraggable<String>(
+      data: node.id,
+      feedback: Material(
+        color: Colors.transparent,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: AppColors.pink,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: const [
+              BoxShadow(
+                  color: Color(0x33000000), blurRadius: 10, offset: Offset(0, 3)),
+            ],
+          ),
+          child: Text(node.concept,
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold)),
         ),
+      ),
+      childWhenDragging: Opacity(opacity: 0.35, child: content),
+      child: GestureDetector(
+        onTap: () => ref.read(selectedNodeIdProvider.notifier).state =
+            selected ? null : node.id,
+        child: content,
       ),
     );
   }
@@ -270,25 +300,28 @@ NodeStyle nodeStyleOfState(String state) {
   switch (state) {
     case NodeState.understood:
       return const NodeStyle(
-        fill: Color(0xFF16362B),
-        border: Color(0xFF3DDC97),
-        text: Color(0xFFDFF7EC),
+        fill: AppColors.canvasBg,
+        border: AppColors.textPrimary,
+        text: AppColors.textPrimary,
         label: '이해완료',
       );
     case NodeState.notUnderstood:
       return const NodeStyle(
-        fill: Color(0xFF3A2233),
-        border: Color(0xFFFF6B8B),
-        text: Color(0xFFFFE1E8),
+        fill: AppColors.pinkBg,
+        border: AppColors.pinkStrong,
+        text: AppColors.pink,
         label: '미이해',
       );
     default:
-      // 서버가 새 상태값을 보내와도 렌더는 살아 있게 한다.
+      // unknown 등 그 외 값: 아직 진단 전이라 추천 후보 풀에 그대로 속해 있는
+      // 노드다(server/app/domain/thoughtmap/recommend.py 참고). 퀴즈 트리의
+      // 선행 관계로만 들어온 개념도 여기 해당한다. 서버가 새 상태값을 보내와도
+      // 렌더는 살아 있게 한다.
       return const NodeStyle(
-        fill: Color(0xFF232734),
-        border: Color(0xFF6B7394),
-        text: Color(0xFFD8DCEA),
-        label: '미확인',
+        fill: AppColors.canvasBg,
+        border: AppColors.gray,
+        text: AppColors.gray,
+        label: '추천 개념',
       );
   }
 }
@@ -298,23 +331,25 @@ class _EmptyGraph extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final outline = Theme.of(context).colorScheme.outline;
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.hub_outlined, size: 56, color: outline),
+          const Icon(Icons.hub_outlined, size: 56, color: AppColors.textMuted),
           const SizedBox(height: 16),
           Text('아직 생각 지도가 비어 있어요',
-              style: Theme.of(context).textTheme.titleMedium),
+              style: Theme.of(context)
+                  .textTheme
+                  .titleMedium
+                  ?.copyWith(color: AppColors.textPrimary)),
           const SizedBox(height: 8),
-          SizedBox(
+          const SizedBox(
             width: 340,
             child: Text(
               '크롬 익스텐션으로 기사를 읽고 진단을 마치면, '
               '"내 이력 가져오기"를 눌렀을 때 이곳에 개념이 쌓입니다.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: outline, height: 1.5),
+              style: TextStyle(color: AppColors.textMuted, height: 1.5),
             ),
           ),
         ],
