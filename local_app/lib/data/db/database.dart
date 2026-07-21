@@ -5,6 +5,7 @@ import 'package:drift_flutter/drift_flutter.dart';
 
 import '../dto/graph.dart';
 import '../dto/user_context.dart';
+import '../xp/xp_rules.dart';
 import 'tables.dart';
 
 part 'database.g.dart';
@@ -30,6 +31,28 @@ class AppDatabase extends _$AppDatabase {
           // v2: 추천 탭 개념 상세의 O/X 문항 보관 컬럼 추가.
           // 기존 사용자 기기의 그래프·학습이력은 그대로 두고 컬럼만 붙인다.
           if (from < 2) await m.addColumn(graphNodes, graphNodes.oxQuizJson);
+        },
+        beforeOpen: (_) async {
+          // XP 테이블은 drift 스키마가 아니라 **raw SQL**로 둔다.
+          //
+          // drift 테이블로 선언하면 `database.g.dart`를 다시 생성해야 하는데,
+          // 코드 생성은 이 프로젝트에서 그래프 스키마 하나로 묶어 둔 의존성이다
+          // (pubspec 주석 참고). XP는 그래프 계약과 무관한 로컬 부가 데이터라
+          // 같은 SQLite 파일에 얹되 생성 코드는 건드리지 않는다.
+          // `IF NOT EXISTS`라서 신규 설치·기존 기기 모두 이 한 줄로 끝난다.
+          await customStatement('''
+            CREATE TABLE IF NOT EXISTS xp_events (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              kind TEXT NOT NULL,
+              amount INTEGER NOT NULL,
+              detail TEXT NOT NULL DEFAULT '',
+              dedupe_key TEXT NOT NULL UNIQUE,
+              occurred_at INTEGER NOT NULL
+            )
+          ''');
+          await customStatement(
+            'CREATE TABLE IF NOT EXISTS xp_visits (day TEXT NOT NULL PRIMARY KEY)',
+          );
         },
       );
 
@@ -191,7 +214,9 @@ class AppDatabase extends _$AppDatabase {
   }
 
   /// 이번 동기화로 반영된 기사들을 "영구 반영본"으로 기록(명세 §5.1).
-  Future<void> recordAppliedScraps(Graph graph) async {
+  ///
+  /// 이번에 **처음** 기록된 기사 제목을 돌려준다 — 기사 완독 XP의 근거다.
+  Future<List<String>> recordAppliedScraps(Graph graph) async {
     final now = DateTime.now().toUtc();
     final counts = <String, int>{};
     for (final n in graph.nodes) {
@@ -202,25 +227,146 @@ class AppDatabase extends _$AppDatabase {
     final known = (await select(appliedScraps).get())
         .map((r) => r.articleTitle)
         .toSet();
+    final fresh =
+        counts.entries.where((e) => !known.contains(e.key)).toList();
 
     await batch((b) {
       b.insertAll(
         appliedScraps,
-        counts.entries.where((e) => !known.contains(e.key)).map(
-              (e) => AppliedScrapsCompanion.insert(
-                articleTitle: e.key,
-                nodeCount: Value(e.value),
-                appliedAt: now,
-              ),
-            ),
+        fresh.map(
+          (e) => AppliedScrapsCompanion.insert(
+            articleTitle: e.key,
+            nodeCount: Value(e.value),
+            appliedAt: now,
+          ),
+        ),
       );
     });
+
+    return fresh.map((e) => e.key).toList();
   }
 
   Future<List<AppliedScrapRow>> loadAppliedScraps() {
     return (select(appliedScraps)
           ..orderBy([(t) => OrderingTerm.desc(t.appliedAt)]))
         .get();
+  }
+
+  // ── 경험치 ──────────────────────────────────────────────────
+  //
+  // 테이블이 drift 스키마 밖(raw SQL)이라 여기서는 customSelect/customInsert로
+  // 다룬다. 대신 `xp_events.dedupe_key`가 UNIQUE라 같은 사건은 몇 번 판정해도
+  // 한 번만 쌓인다 — 동기화 버튼을 연타해도 XP가 부풀지 않는다.
+
+  /// 아직 지급되지 않은 사건만 골라 적립하고, **실제로 지급된 것**을 돌려준다.
+  Future<List<XpEvent>> awardXp(List<XpEvent> events) async {
+    if (events.isEmpty) return const [];
+
+    final granted = <XpEvent>[];
+    await transaction(() async {
+      final keys = events.map((e) => e.dedupeKey).toList();
+      final placeholders = List.filled(keys.length, '?').join(',');
+      final existing = (await customSelect(
+        'SELECT dedupe_key FROM xp_events WHERE dedupe_key IN ($placeholders)',
+        variables: keys.map(Variable<String>.new).toList(),
+      ).get())
+          .map((r) => r.read<String>('dedupe_key'))
+          .toSet();
+
+      for (final e in events) {
+        if (!existing.add(e.dedupeKey)) continue; // 이미 받았거나 같은 배치 내 중복
+        await customInsert(
+          'INSERT OR IGNORE INTO xp_events '
+          '(kind, amount, detail, dedupe_key, occurred_at) VALUES (?, ?, ?, ?, ?)',
+          variables: [
+            Variable<String>(e.kindName),
+            Variable<int>(e.amount),
+            Variable<String>(e.detail),
+            Variable<String>(e.dedupeKey),
+            Variable<int>(e.occurredAt.toUtc().millisecondsSinceEpoch),
+          ],
+        );
+        granted.add(e);
+      }
+    });
+    return granted;
+  }
+
+  /// 총 XP·스트릭·최근 내역을 한 번에 읽는다.
+  Future<XpSnapshot> loadXpSummary({int recentLimit = 20}) async {
+    final totalRow = await customSelect(
+      'SELECT COALESCE(SUM(amount), 0) AS total FROM xp_events',
+    ).getSingle();
+
+    final rows = await customSelect(
+      'SELECT kind, amount, detail, dedupe_key, occurred_at FROM xp_events '
+      'ORDER BY id DESC LIMIT ?',
+      variables: [Variable<int>(recentLimit)],
+    ).get();
+
+    return XpSnapshot(
+      total: totalRow.read<int>('total'),
+      streak: await currentStreak(DateTime.now()),
+      recent: rows
+          .map((r) => XpEvent(
+                kindName: r.read<String>('kind'),
+                amount: r.read<int>('amount'),
+                detail: r.read<String>('detail'),
+                dedupeKey: r.read<String>('dedupe_key'),
+                occurredAt: DateTime.fromMillisecondsSinceEpoch(
+                  r.read<int>('occurred_at'),
+                  isUtc: true,
+                ).toLocal(),
+              ))
+          .toList(),
+    );
+  }
+
+  /// 오늘 접속을 남기고 현재 스트릭을 돌려준다. 하루에 한 줄만 쌓인다.
+  Future<VisitOutcome> recordVisit(DateTime now) async {
+    final today = _dayKey(now);
+    final seen = await customSelect(
+      'SELECT day FROM xp_visits WHERE day = ?',
+      variables: [Variable<String>(today)],
+    ).get();
+
+    if (seen.isEmpty) {
+      await customInsert(
+        'INSERT OR IGNORE INTO xp_visits (day) VALUES (?)',
+        variables: [Variable<String>(today)],
+      );
+    }
+
+    return VisitOutcome(
+      dayKey: today,
+      isFirstToday: seen.isEmpty,
+      streak: await currentStreak(now),
+    );
+  }
+
+  /// 오늘부터 거꾸로 이어지는 연속 접속 일수. 어제까지 끊겼으면 0이다.
+  Future<int> currentStreak(DateTime now) async {
+    final days = (await customSelect(
+      'SELECT day FROM xp_visits ORDER BY day DESC LIMIT 400',
+    ).get())
+        .map((r) => r.read<String>('day'))
+        .toSet();
+
+    var streak = 0;
+    var cursor = DateTime(now.year, now.month, now.day);
+    while (days.contains(_dayKey(cursor))) {
+      streak++;
+      // `subtract(Duration(days: 1))`이 아니라 날짜 성분으로 물러난다.
+      // 서머타임이 있는 지역에서 자정 - 24시간은 전날 23시가 될 수 있다.
+      cursor = DateTime(cursor.year, cursor.month, cursor.day - 1);
+    }
+    return streak;
+  }
+
+  static String _dayKey(DateTime t) {
+    final m = t.month.toString().padLeft(2, '0');
+    final d = t.day.toString().padLeft(2, '0');
+    return '${t.year}-$m-$d';
   }
 
   /// 로그아웃 시 로컬 학습 데이터를 비운다.
@@ -231,6 +377,9 @@ class AppDatabase extends _$AppDatabase {
       await delete(learningHistories).go();
       await delete(articlePreferences).go();
       await delete(appliedScraps).go();
+      // XP도 학습 데이터다 — 계정이 바뀌면 함께 비운다.
+      await customStatement('DELETE FROM xp_events');
+      await customStatement('DELETE FROM xp_visits');
     });
   }
 }
