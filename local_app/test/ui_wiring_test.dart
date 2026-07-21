@@ -299,7 +299,8 @@ void main() {
 
       await openPanel(tester, '보관함');
 
-      expect(find.text('환율 기사'), findsOneWidget);
+      // 보관함 카드에 한 번, 지도의 기사 노드에 한 번(article_nodes.dart).
+      expect(find.text('환율 기사'), findsNWidgets(2));
       // 학습 데이터 원본은 로컬이다(명세 §4.5) — 보관함은 그래프에서 역산한다.
       expect(api.updateCalls, before);
       expect(api.exploreCalls, isEmpty);

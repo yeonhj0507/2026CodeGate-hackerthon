@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:graphview/GraphView.dart' as gv;
+import 'package:url_launcher/url_launcher.dart';
 
 import '../data/dto/graph.dart';
 import '../providers/providers.dart';
 import 'app_colors.dart';
+import 'article_nodes.dart';
 
 /// 생각 지도 시각화(명세 §5.1 "뇌 지도").
 ///
@@ -71,8 +73,11 @@ class _ThoughtMapViewState extends ConsumerState<ThoughtMapView> {
 
   @override
   Widget build(BuildContext context) {
-    final graph = widget.graph;
-    if (graph.isEmpty) return const _EmptyGraph();
+    if (widget.graph.isEmpty) return const _EmptyGraph();
+
+    // 기사 노드는 화면에서만 존재한다. 저장·동기화되는 그래프는 그대로 둔다
+    // (article_nodes.dart 주석 — 서버가 기사를 개념으로 착각하면 안 된다).
+    final graph = withArticleNodes(widget.graph);
 
     _fitWhenShapeChanged(graph);
 
@@ -93,14 +98,23 @@ class _ThoughtMapViewState extends ConsumerState<ThoughtMapView> {
       final from = nodesById[e.from];
       final to = nodesById[e.to];
       if (from == null || to == null) continue;
+      // 기사→개념 줄은 개념 사이의 관계선보다 연하게. 지도의 주인공은 개념이고
+      // 기사선은 출처를 훑을 때만 눈에 들어오면 된다.
+      final isSource = e.type == articleEdgeType;
       gvGraph.addEdge(
         from,
         to,
         paint: Paint()
-          ..color = e.type == EdgeType.prereq
-              ? const Color(0xFFD9D2C8)
-              : const Color(0xFFE8E2D8)
-          ..strokeWidth = e.type == EdgeType.prereq ? 1.6 : 1.0
+          ..color = isSource
+              ? AppColors.pinkMuted.withValues(alpha: 0.45)
+              : e.type == EdgeType.prereq
+                  ? const Color(0xFFD9D2C8)
+                  : const Color(0xFFE8E2D8)
+          ..strokeWidth = isSource
+              ? 1.0
+              : e.type == EdgeType.prereq
+                  ? 1.6
+                  : 1.0
           ..style = PaintingStyle.stroke,
       );
     }
@@ -115,6 +129,7 @@ class _ThoughtMapViewState extends ConsumerState<ThoughtMapView> {
       final id = gvNode.key!.value as String;
       final node = graph.nodeById(id);
       if (node == null) return const SizedBox.shrink();
+      if (isArticleNodeId(id)) return _ArticleNode(node: node);
       return _ConceptNode(node: node, keepNodesAlive: _keepNodesAlive);
     }
 
@@ -292,6 +307,77 @@ class _ConceptNode extends ConsumerWidget {
         onTap: () => ref.read(selectedNodeIdProvider.notifier).state =
             selected ? null : node.id,
         child: content,
+      ),
+    );
+  }
+}
+
+/// 기사 노드. 개념 노드와 **다르게 생겨야 한다** — 이해 대상이 아니기 때문이다.
+///
+/// 개념 노드와 세 가지가 다르다:
+///   - 선택되지 않는다. 상세 패널은 개념을 설명하는 자리다.
+///   - 탐색 탭으로 끌어다 놓을 수 없다. 기사는 개념이 아니라 키워드가 못 된다.
+///   - 탭하면 기사가 브라우저에서 열린다(URL 이 있을 때만).
+class _ArticleNode extends StatelessWidget {
+  const _ArticleNode({required this.node});
+
+  final GraphNode node;
+
+  SourceArticle? get _article =>
+      node.sourceArticles.isEmpty ? null : node.sourceArticles.first;
+
+  Future<void> _open() async {
+    final url = _article?.url ?? '';
+    final uri = Uri.tryParse(url);
+    if (url.isEmpty || uri == null) return;
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final hasUrl = (_article?.url ?? '').isNotEmpty;
+
+    final content = Container(
+      constraints: const BoxConstraints(maxWidth: 210),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      decoration: BoxDecoration(
+        color: AppColors.panelBg,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: AppColors.border, width: 1.4),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.article_outlined,
+              size: 14, color: AppColors.textMuted),
+          const SizedBox(width: 7),
+          Flexible(
+            child: Text(
+              node.concept,
+              // 제목은 개념어보다 길다. 두 줄에서 끊어 노드 크기가 튀지 않게 한다.
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: AppColors.textMuted,
+                fontSize: 11.5,
+                height: 1.35,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (!hasUrl) return content;
+
+    return Tooltip(
+      message: '기사 열기 — ${node.concept}',
+      waitDuration: const Duration(milliseconds: 400),
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: GestureDetector(onTap: _open, child: content),
       ),
     );
   }
