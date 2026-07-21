@@ -100,7 +100,12 @@ export type ChromeMessage =
   | { type: 'SCRAP_RESPONSE'; ok: boolean }
   | { type: 'SCRAP_ERROR'; error: string }
   | { type: 'GET_AUTH_STATUS' }
-  | { type: 'AUTH_STATUS'; loggedIn: boolean; userId?: string }
+  | { type: 'AUTH_STATUS'; loggedIn: boolean; userId?: string; email?: string }
+  | { type: 'LOGIN'; email: string; password: string; signup?: boolean }
+  | { type: 'LOGIN_RESPONSE'; userId: string; email: string }
+  | { type: 'LOGIN_ERROR'; error: string }
+  | { type: 'LOGOUT' }
+  | { type: 'LOGOUT_RESPONSE' }
 
 // ─── Session 상태머신 (Stream B: session.ts ↔ ui/) ──────────────────────────
 

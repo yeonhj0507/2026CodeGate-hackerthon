@@ -23,6 +23,102 @@ async function buildHeaders(): Promise<Record<string, string>> {
   return headers
 }
 
+// ─── 인증 (Step 9: 팝업 로그인) ──────────────────────────────────────────────
+//
+// 로컬 앱(local_app)과 토큰을 공유하지 않는 독립 로그인이다(명세 §4.1).
+// 서버 계약: POST /auth/login {email,password,client} → {accessToken,expiresIn,userId},
+//            GET /auth/me (Bearer) → {userId,email,displayName}.
+// /auth/logout 은 서버에 없다(JWT 무상태) — 로그아웃은 로컬 토큰 폐기로 처리한다.
+// VITE_MOCK_AUTH=true면 서버 없이 로그인 성공 처리(VITE_MOCK_QUIZ/SCRAP와 짝, 무서버 e2e).
+
+const MOCK_AUTH = import.meta.env.VITE_MOCK_AUTH === 'true'
+const MOCK_TOKEN = 'mock-access-token'
+
+async function setSession(token: string, email: string): Promise<void> {
+  await chrome.storage.local.set({
+    [STORAGE_KEYS.ACCESS_TOKEN]: token,
+    [STORAGE_KEYS.USER_EMAIL]: email,
+  })
+}
+
+async function clearSession(): Promise<void> {
+  await chrome.storage.local.remove([STORAGE_KEYS.ACCESS_TOKEN, STORAGE_KEYS.USER_EMAIL])
+}
+
+/** 서버 통일 에러 포맷 {error:{code,message}}에서 사람이 읽을 메시지를 뽑는다(errors.py §8). */
+async function extractApiError(res: Response, fallback: string): Promise<string> {
+  try {
+    const data = (await res.json()) as { error?: { message?: string } }
+    if (data?.error?.message) return data.error.message
+  } catch {
+    /* JSON 아님 — fallback 사용 */
+  }
+  return `${fallback} (${res.status})`
+}
+
+/** 로그인 결과. 성공 시 토큰을 저장하고 사용자 식별 정보를 돌려준다. */
+export interface LoginResult {
+  userId: string
+  email: string
+}
+
+/**
+ * 로그인(또는 signup=true면 회원가입 후 이어서 로그인).
+ * - MOCK_AUTH: 서버 호출 없이 즉시 성공, mock 토큰 저장.
+ * - signup: POST /auth/signup(계정 생성, 토큰 미발급)한 뒤 같은 자격증명으로 로그인.
+ * 실패 시 서버 메시지를 담아 throw.
+ */
+export async function login(email: string, password: string, signup = false): Promise<LoginResult> {
+  if (MOCK_AUTH) {
+    await setSession(MOCK_TOKEN, email)
+    return { userId: 'mock-user', email }
+  }
+
+  if (signup) {
+    const res = await fetch(ENDPOINTS.SIGNUP, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    })
+    if (!res.ok) throw new Error(await extractApiError(res, '회원가입에 실패했습니다'))
+  }
+
+  const res = await fetch(ENDPOINTS.LOGIN, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password, client: 'extension' }),
+  })
+  if (!res.ok) throw new Error(await extractApiError(res, '로그인에 실패했습니다'))
+
+  const data = (await res.json()) as { accessToken: string; userId: string }
+  await setSession(data.accessToken, email)
+  return { userId: data.userId, email }
+}
+
+/** 로그아웃 — 서버 무상태이므로 로컬 세션만 폐기한다. */
+export async function logout(): Promise<void> {
+  await clearSession()
+}
+
+/** 현재 로그인 상태. 토큰이 있으면 /auth/me로 검증(401이면 만료로 보고 세션 폐기). */
+export async function getAuthStatus(): Promise<{ loggedIn: boolean; userId?: string; email?: string }> {
+  const token = await getAccessToken()
+  if (!token) return { loggedIn: false }
+
+  if (MOCK_AUTH) {
+    const result = await chrome.storage.local.get(STORAGE_KEYS.USER_EMAIL)
+    return { loggedIn: true, userId: 'mock-user', email: result[STORAGE_KEYS.USER_EMAIL] as string }
+  }
+
+  const res = await fetch(ENDPOINTS.ME, { headers: await buildHeaders() })
+  if (!res.ok) {
+    if (res.status === 401) await clearSession() // 만료·무효 토큰 정리
+    return { loggedIn: false }
+  }
+  const me = (await res.json()) as { userId: string; email: string }
+  return { loggedIn: true, userId: me.userId, email: me.email }
+}
+
 /**
  * POST /quiz 요청. 실패 시 throw.
  * VITE_MOCK_QUIZ=true면 fetch 대신 body에서 뽑은 canned Quiz[] 반환(§T3.4).
