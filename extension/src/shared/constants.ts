@@ -10,15 +10,16 @@ export const API_BASE_URL = 'http://localhost:8000'
 export const ENDPOINTS = {
   QUIZ:    `${API_BASE_URL}/quiz`,
   SCRAP:   `${API_BASE_URL}/scrap`,
+  SIGNUP:  `${API_BASE_URL}/auth/signup`,
   LOGIN:   `${API_BASE_URL}/auth/login`,
   ME:      `${API_BASE_URL}/auth/me`,
-  LOGOUT:  `${API_BASE_URL}/auth/logout`,
 } as const
 
 // ─── chrome.storage.local 키 ─────────────────────────────────────────────────
 
 export const STORAGE_KEYS = {
   ACCESS_TOKEN:  'prober_access_token',
+  USER_EMAIL:    'prober_user_email',         // 로그인 사용자 이메일(팝업 표시용 캐시)
   RETRY_QUEUE:   'prober_scrap_retry_queue',  // 전송 실패한 ScrapRequest[] 재시도 큐
 } as const
 

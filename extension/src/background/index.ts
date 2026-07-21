@@ -4,7 +4,14 @@
 // =============================================================================
 
 import type { ChromeMessage } from '../shared/types'
-import { drainRetryQueue, sendQuizRequest, sendScrapRequest } from './api'
+import {
+  drainRetryQueue,
+  getAuthStatus,
+  login,
+  logout,
+  sendQuizRequest,
+  sendScrapRequest,
+} from './api'
 
 // 서비스워커가 (재)시작될 때마다 1회 재시도 큐 drain 시도 (T4.4-b).
 void drainRetryQueue()
@@ -28,9 +35,26 @@ chrome.runtime.onMessage.addListener((message: ChromeMessage, _sender, sendRespo
       return true
 
     case 'GET_AUTH_STATUS':
-      // TODO(Step 9): chrome.storage.local에서 ACCESS_TOKEN 조회 후 실제 로그인 상태 반환
-      sendResponse({ type: 'AUTH_STATUS', loggedIn: false } satisfies ChromeMessage)
-      return false
+      getAuthStatus()
+        .then((s) =>
+          sendResponse({ type: 'AUTH_STATUS', ...s } satisfies ChromeMessage),
+        )
+        .catch(() => sendResponse({ type: 'AUTH_STATUS', loggedIn: false } satisfies ChromeMessage))
+      return true
+
+    case 'LOGIN':
+      login(message.email, message.password, message.signup)
+        .then(({ userId, email }) =>
+          sendResponse({ type: 'LOGIN_RESPONSE', userId, email } satisfies ChromeMessage),
+        )
+        .catch((err: Error) =>
+          sendResponse({ type: 'LOGIN_ERROR', error: err.message } satisfies ChromeMessage),
+        )
+      return true
+
+    case 'LOGOUT':
+      logout().then(() => sendResponse({ type: 'LOGOUT_RESPONSE' } satisfies ChromeMessage))
+      return true
 
     default:
       return false
