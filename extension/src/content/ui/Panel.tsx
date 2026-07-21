@@ -91,11 +91,21 @@ export function Panel({ onEnd }: Props) {
           streaming ? (
             <div className="idle">
               <span className="spinner" aria-hidden="true" />
-              <div>
-                읽는 속도가 더 빠르네요.
-                <br />
-                다음 질문을 만들고 있어요.
-              </div>
+              {ready === 0 ? (
+                // 아직 첫 문항 전 — "생성 중"임을 분명히 알린다(빈 화면 오해 방지).
+                <div>
+                  기사를 분석해
+                  <br />
+                  질문을 만들고 있어요.
+                </div>
+              ) : (
+                // 이미 몇 개는 준비됐는데 사용자가 그보다 빨리 읽어 내려간 상태.
+                <div>
+                  읽는 속도가 더 빠르네요.
+                  <br />
+                  다음 질문을 만들고 있어요.
+                </div>
+              )}
               {ready > 0 && <div className="feed-note">지금까지 {ready}개 준비됨</div>}
             </div>
           ) : (
