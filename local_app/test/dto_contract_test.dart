@@ -86,6 +86,28 @@ void main() {
       expect(article.hasUrl, isFalse);
       expect(article.label, '옛 기사 제목');
     });
+
+    test('구형(URL 없음)과 신형(URL 있음)이 같은 기사면 한 건으로 접힌다', () {
+      // 앱 업데이트 직후 기기에서 실제로 두 줄로 보이던 문제(실행 중 발견).
+      final merged = SourceArticle.mergeAll(const [
+        SourceArticle(url: '', title: '반도체 수출 3개월째 증가'),
+        SourceArticle(url: 'https://n.example/chip', title: '반도체 수출 3개월째 증가'),
+      ]);
+
+      expect(merged, hasLength(1));
+      // URL 이 있는 쪽으로 승격돼야 링크를 열 수 있다.
+      expect(merged.single.url, 'https://n.example/chip');
+    });
+
+    test('URL 이 다르면 다른 기사로 남는다(크로스기사 누적)', () {
+      final merged = SourceArticle.mergeAll(const [
+        SourceArticle(url: 'https://n.example/a', title: '기사 A'),
+        SourceArticle(url: 'https://n.example/b', title: '기사 B'),
+        SourceArticle(url: 'https://n.example/a', title: '기사 A'),
+      ]);
+
+      expect(merged.map((a) => a.title), ['기사 A', '기사 B']);
+    });
   });
 
   test('Recommendations 라운드트립 — 결핍/확장/기사 세 갈래', () {

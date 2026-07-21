@@ -56,6 +56,46 @@ class SourceArticle {
 
   Map<String, dynamic> toJson() => {'url': url, 'title': title};
 
+  /// 같은 기사끼리 합친다. **URL 이 식별자**이되, 한쪽에 URL 이 없으면 제목으로 맞춘다.
+  ///
+  /// 앱을 업데이트한 기기에서는 로컬 DB 에 URL 없는 구형 항목(`url: ''`)이 남아 있고,
+  /// 서버는 같은 기사를 URL 과 함께 내려준다. 단순 합집합으로 두면 한 기사가 두 줄로
+  /// 보이므로(실행 중 발견), 여기서 한 건으로 접고 URL 이 있는 쪽을 채택한다.
+  static List<SourceArticle> mergeAll(Iterable<SourceArticle> items) {
+    final byUrl = <String, SourceArticle>{};
+    final byTitle = <String, SourceArticle>{};
+    final order = <SourceArticle>[];
+
+    void replace(SourceArticle old, SourceArticle fresh) {
+      order[order.indexOf(old)] = fresh;
+      if (fresh.url.isNotEmpty) byUrl[fresh.url] = fresh;
+      if (fresh.title.isNotEmpty) byTitle[fresh.title] = fresh;
+    }
+
+    for (final item in items) {
+      if (item.url.isEmpty && item.title.isEmpty) continue;
+
+      final sameUrl = item.url.isEmpty ? null : byUrl[item.url];
+      if (sameUrl != null) {
+        // 제목이 나중에 채워진 경우를 보완.
+        if (sameUrl.title.isEmpty && item.title.isNotEmpty) replace(sameUrl, item);
+        continue;
+      }
+
+      final sameTitle = item.title.isEmpty ? null : byTitle[item.title];
+      if (sameTitle != null) {
+        // 구형(URL 없음) 항목이 먼저 들어와 있으면 URL 있는 쪽으로 승격.
+        if (sameTitle.url.isEmpty && item.url.isNotEmpty) replace(sameTitle, item);
+        continue;
+      }
+
+      order.add(item);
+      if (item.url.isNotEmpty) byUrl[item.url] = item;
+      if (item.title.isNotEmpty) byTitle[item.title] = item;
+    }
+    return order;
+  }
+
   @override
   bool operator ==(Object other) =>
       other is SourceArticle && other.url == url && other.title == title;

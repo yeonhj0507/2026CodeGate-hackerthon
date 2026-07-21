@@ -47,10 +47,12 @@ class AppDatabase extends _$AppDatabase {
         concept: row.concept,
         state: row.state,
         isPrereq: row.isPrereq,
-        // 구형 로컬 DB에는 제목 문자열만 들어 있다. fromDynamic 이 둘 다 흡수한다.
-        sourceArticles: (jsonDecode(row.sourceArticlesJson) as List<dynamic>)
-            .map(SourceArticle.fromDynamic)
-            .toList(),
+        // 구형 로컬 DB에는 제목 문자열만 들어 있다. fromDynamic 이 둘 다 흡수하고,
+        // mergeAll 이 구형(URL 없음)과 신형(URL 있음)의 같은 기사를 한 건으로 접는다.
+        sourceArticles: SourceArticle.mergeAll(
+          (jsonDecode(row.sourceArticlesJson) as List<dynamic>)
+              .map(SourceArticle.fromDynamic),
+        ),
         summaryMeta: row.summaryMeta,
       );
 
