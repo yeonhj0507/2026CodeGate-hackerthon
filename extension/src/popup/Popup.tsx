@@ -143,9 +143,11 @@ function SignedIn({ email, onSignedOut }: { email: string; onSignedOut: () => vo
     setStarting(true)
     setNotice(null)
 
+    let tabUrl = ''
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
       if (tab?.id === undefined) throw new Error('no tab')
+      tabUrl = tab.url ?? ''
 
       const res = (await chrome.tabs.sendMessage(tab.id, {
         type: 'START_SESSION',
@@ -157,8 +159,15 @@ function SignedIn({ email, onSignedOut }: { email: string; onSignedOut: () => vo
       }
       setNotice(res?.type === 'SESSION_UNAVAILABLE' ? res.reason : '시작하지 못했습니다.')
     } catch {
-      // content script 가 없는 페이지(크롬 내부 페이지·스토어 등)
-      setNotice('이 페이지에서는 사용할 수 없습니다.')
+      // content script 가 응답하지 않는 경우. 두 가지가 섞여 있어 구분해 안내한다.
+      //   (1) 확장을 새로 설치·갱신하기 전부터 열려 있던 탭 → 예전 content script 가
+      //       남아 연결이 끊긴 상태다. 새로고침하면 해결된다.
+      //   (2) chrome:// · 웹스토어 등 content script 가 아예 주입되지 않는 페이지.
+      setNotice(
+        /^https?:/.test(tabUrl)
+          ? '페이지를 새로고침(F5)한 뒤 다시 눌러주세요.'
+          : '이 페이지에서는 사용할 수 없습니다.',
+      )
     } finally {
       setStarting(false)
     }
