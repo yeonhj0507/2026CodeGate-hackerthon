@@ -14,6 +14,7 @@
 import type { Quiz, Followup } from '../src/shared/types'
 import { useSession } from '../src/content/session'
 import { createSessionQueue } from '../src/content/session-bind'
+import { useXpToast } from '../src/content/xp-toast'
 
 // ─── 미니 assert 프레임워크 ──────────────────────────────────────────────────
 
@@ -128,6 +129,50 @@ s().submitAnswer(0)
 s().dismissExplanation() // 이후 IDLE 복귀 시 자동 pump는 없어야 함(구독 해제)
 q.enqueue([QMAIN])
 check('dispose 후: IDLE 복귀 자동 pump 없음(수동 enqueue만 즉시 반영)', s().active?.quiz.claimId === 'c2')
+
+// ─── 5) XP 토스트: local_app XpKind 배점과 같은 갈래로 갈린다 ───────────────
+//
+// xp-toast.ts 주석대로 이 숫자는 낙관적 추정이지 실제 원장이 아니다. 여기서
+// 검증하는 건 "얼마가 뜨느냐"가 아니라 "언제 뜨고 언제 안 뜨느냐"의 분기 —
+// local_app의 evaluateGraphXp 규칙(오답이어도 재질문 완주는 준다, 메인 오답은
+// 아무것도 안 준다)과 같은 모양이어야 한다.
+
+const clearToasts = () => useXpToast.setState({ toasts: [] })
+const toastLabels = () => useXpToast.getState().toasts.map((t) => t.label)
+
+reset()
+clearToasts()
+s().startQuestion(QMAIN)
+s().submitAnswer(1) // 정답(level 0)
+check('메인 정답 → "정답" 토스트 1건', toastLabels().length === 1 && toastLabels()[0] === '정답')
+
+reset()
+clearToasts()
+s().startQuestion(QSOLO)
+s().submitAnswer(1) // 오답(정답 idx 0)
+check('메인 오답 → 토스트 없음(선행으로 내려가야 재질문 완주가 뜬다)', toastLabels().length === 0)
+
+reset()
+clearToasts()
+s().startQuestion(QMAIN)
+s().submitAnswer(0) // 오답 → SHOW_EXPLANATION(level 0)
+s().dismissExplanation() // 강등 → ASKING(level 1) — submitAnswer는 ASKING에서만 먹는다
+s().submitAnswer(0) // L1 오답(정답 idx 1) — 그래도 재질문 완주
+check(
+  '재질문 오답 → "재질문 완주" 토스트(오답이어도 준다)',
+  toastLabels().length === 1 && toastLabels()[0] === '재질문 완주',
+)
+
+reset()
+clearToasts()
+s().startQuestion(QMAIN)
+s().submitAnswer(0) // 오답 → SHOW_EXPLANATION(level 0)
+s().dismissExplanation() // 강등 → ASKING(level 1)
+s().submitAnswer(1) // L1 정답이어도 "재질문 완주"(정답 토스트가 아니다)
+check(
+  '재질문 정답도 "정답"이 아니라 "재질문 완주"',
+  toastLabels().length === 1 && toastLabels()[0] === '재질문 완주',
+)
 
 // ─── 요약 ────────────────────────────────────────────────────────────────────
 
