@@ -76,12 +76,11 @@ export const PANEL_CSS = /* css */ `
   display: flex; align-items: center; gap: 8px;
   padding: 8px 16px;
   background: var(--surface);
-  border-bottom: 1px solid var(--line);
   flex: 0 0 auto;
 }
 .progress-track {
   flex: 1 1 auto;
-  height: 4px;
+  height: 10px;
   border-radius: 999px;
   background: var(--accent-weak);
   overflow: hidden;
