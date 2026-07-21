@@ -7,9 +7,9 @@ import '../providers/providers.dart';
 
 /// 추천 열람(명세 §5.3).
 ///
-/// 서버가 그래프와 함께 돌려준 두 종류를 그대로 두 섹션으로 나눠 보여준다.
-/// 기사 추천 소스는 신문사 제휴 자체 데이터셋(명세 §4.4 확정)이므로 외부
-/// 브라우저로 연다.
+/// 서버가 그래프와 함께 돌려준 세 종류를 그대로 세 섹션으로 나눠 보여준다
+/// — 결핍 보완 / 심화(확장) / 기사. 기사 추천 소스는 신문사 제휴 자체
+/// 데이터셋(명세 §4.4 확정)이므로 외부 브라우저로 연다.
 class RecommendationPanel extends ConsumerWidget {
   const RecommendationPanel({super.key, required this.recommendations});
 
@@ -35,16 +35,33 @@ class RecommendationPanel extends ConsumerWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
       children: [
-        if (recommendations.concepts.isNotEmpty) ...[
+        if (recommendations.gapConcepts.isNotEmpty) ...[
           const _Header(
             icon: Icons.lightbulb_outline,
             title: '모를 것 같은 개념',
             subtitle: '스스로 찾아보면 좋을 개념이에요',
           ),
           const SizedBox(height: 10),
-          for (final c in recommendations.concepts)
+          for (final c in recommendations.gapConcepts)
             _ConceptCard(recommendation: c),
         ],
+        // 확장 추천은 콜드스타트에 비는 게 정상이라(명세 §4.4 한계) 섹션을
+        // 숨기는 대신 안내를 띄운다 — 없어진 게 아니라 아직 이르다는 뜻.
+        const SizedBox(height: 24),
+        const _Header(
+          icon: Icons.trending_up,
+          title: '확장 개념',
+          subtitle: '이해한 개념에서 한 걸음 더',
+        ),
+        const SizedBox(height: 10),
+        if (recommendations.expansionConcepts.isEmpty)
+          const _EmptyHint(
+            text: '아직 확장 추천이 없어요.\n'
+                '개념을 이해완료하면 여기에서 다음 단계를 알려드릴게요.',
+          )
+        else
+          for (final e in recommendations.expansionConcepts)
+            _ExpansionCard(recommendation: e),
         if (recommendations.articles.isNotEmpty) ...[
           const SizedBox(height: 24),
           const _Header(
@@ -69,7 +86,8 @@ class _ConceptCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
-    final nodeId = recommendation.relatedNodeId;
+    final nodeId =
+        recommendation.conceptId.isEmpty ? null : recommendation.conceptId;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
@@ -86,7 +104,7 @@ class _ConceptCard extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                recommendation.concept,
+                recommendation.conceptTag,
                 style: const TextStyle(
                     fontSize: 14, fontWeight: FontWeight.w600),
               ),
@@ -101,6 +119,77 @@ class _ConceptCard extends ConsumerWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// 확장 개념 카드. 탭하면 그래프에서 해당 노드를 짚어준다.
+class _ExpansionCard extends ConsumerWidget {
+  const _ExpansionCard({required this.recommendation});
+
+  final ExpansionRecommendation recommendation;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final scheme = Theme.of(context).colorScheme;
+    final nodeId =
+        recommendation.conceptId.isEmpty ? null : recommendation.conceptId;
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      color: const Color(0xFF1D2130),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: nodeId == null
+            ? null
+            : () => ref.read(selectedNodeIdProvider.notifier).state = nodeId,
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      recommendation.conceptTag,
+                      style: const TextStyle(
+                          fontSize: 14, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                  if (recommendation.reason == ExpansionReason.retry)
+                    Icon(Icons.replay, size: 15, color: scheme.primary),
+                ],
+              ),
+              const SizedBox(height: 6),
+              // 서버는 신호 종류만 주고 문구는 앱이 만든다(계약 §4).
+              Text(
+                recommendation.reason.label,
+                style: TextStyle(
+                    fontSize: 12, color: scheme.outline, height: 1.5),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _EmptyHint extends StatelessWidget {
+  const _EmptyHint({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+      child: Text(
+        text,
+        style: TextStyle(fontSize: 12, color: scheme.outline, height: 1.6),
       ),
     );
   }

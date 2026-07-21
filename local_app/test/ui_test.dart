@@ -17,14 +17,17 @@ void main() {
         concept: '기준금리',
         state: NodeState.understood,
         isPrereq: false,
-        sourceArticles: ['기사 A'],
+        sourceArticles: [SourceArticle(url: 'https://n.example/a', title: '기사 A')],
       ),
       GraphNode(
         id: 'c_실질금리',
         concept: '실질금리',
         state: NodeState.notUnderstood,
         isPrereq: false,
-        sourceArticles: ['기사 A', '기사 B'],
+        sourceArticles: [
+          SourceArticle(url: 'https://n.example/a', title: '기사 A'),
+          SourceArticle(url: 'https://n.example/b', title: '기사 B'),
+        ],
         summaryMeta: '명목금리에서 물가상승률을 뺀 값입니다.',
       ),
       GraphNode(
@@ -32,7 +35,7 @@ void main() {
         concept: '물가상승률',
         state: NodeState.notUnderstood,
         isPrereq: true,
-        sourceArticles: ['기사 A'],
+        sourceArticles: [SourceArticle(url: 'https://n.example/a', title: '기사 A')],
       ),
     ],
     edges: [
@@ -152,11 +155,18 @@ void main() {
 
   group('RecommendationPanel', () {
     const recs = Recommendations(
-      concepts: [
+      gapConcepts: [
         ConceptRecommendation(
-          concept: '명목금리',
-          reason: '실질금리의 짝 개념',
-          relatedNodeId: 'c_실질금리',
+          conceptId: 'c_실질금리',
+          conceptTag: '실질금리',
+          reason: '진단에서 놓친 개념',
+        ),
+      ],
+      expansionConcepts: [
+        ExpansionRecommendation(
+          conceptId: 'c_기준금리',
+          conceptTag: '기준금리',
+          reason: ExpansionReason.retry,
         ),
       ],
       articles: [
@@ -169,16 +179,34 @@ void main() {
       ],
     );
 
-    testWidgets('두 섹션으로 나눠 보여준다(명세 §5.3)', (tester) async {
+    testWidgets('세 섹션으로 나눠 보여준다(명세 §5.3)', (tester) async {
       await tester
           .pumpWidget(host(const RecommendationPanel(recommendations: recs)));
       await tester.pumpAndSettle();
 
       expect(find.text('모를 것 같은 개념'), findsOneWidget);
+      expect(find.text('확장 개념'), findsOneWidget);
       expect(find.text('읽을 만한 기사'), findsOneWidget);
-      expect(find.text('명목금리'), findsOneWidget);
+      expect(find.text('실질금리'), findsOneWidget);
+      expect(find.text('기준금리'), findsOneWidget);
+      // 서버는 신호 종류만 주고 문구는 앱이 만든다.
+      expect(find.text(ExpansionReason.retry.label), findsOneWidget);
       expect(find.text('30초 만에 이해하는 실질금리'), findsOneWidget);
       expect(find.textContaining('한겨레'), findsOneWidget);
+    });
+
+    testWidgets('확장 추천이 없으면 콜드스타트 안내를 보여준다(명세 §4.4 한계)',
+        (tester) async {
+      const onlyGap = Recommendations(
+        gapConcepts: [
+          ConceptRecommendation(conceptId: 'c_a', conceptTag: 'A'),
+        ],
+      );
+      await tester
+          .pumpWidget(host(const RecommendationPanel(recommendations: onlyGap)));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('아직 확장 추천이 없어요'), findsOneWidget);
     });
 
     testWidgets('개념 추천을 누르면 그래프 선택이 그 노드로 옮겨간다', (tester) async {
@@ -193,10 +221,28 @@ void main() {
       ));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('명목금리'));
+      await tester.tap(find.text('실질금리'));
       await tester.pumpAndSettle();
 
       expect(container.read(selectedNodeIdProvider), 'c_실질금리');
+    });
+
+    testWidgets('확장 추천을 누르면 그래프 선택이 그 노드로 옮겨간다', (tester) async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+
+      await tester.pumpWidget(UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(
+          home: Scaffold(body: RecommendationPanel(recommendations: recs)),
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('기준금리'));
+      await tester.pumpAndSettle();
+
+      expect(container.read(selectedNodeIdProvider), 'c_기준금리');
     });
 
     testWidgets('추천이 없으면 안내 문구를 보여준다', (tester) async {

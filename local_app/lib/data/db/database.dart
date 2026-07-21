@@ -47,8 +47,9 @@ class AppDatabase extends _$AppDatabase {
         concept: row.concept,
         state: row.state,
         isPrereq: row.isPrereq,
+        // 구형 로컬 DB에는 제목 문자열만 들어 있다. fromDynamic 이 둘 다 흡수한다.
         sourceArticles: (jsonDecode(row.sourceArticlesJson) as List<dynamic>)
-            .map((e) => e.toString())
+            .map(SourceArticle.fromDynamic)
             .toList(),
         summaryMeta: row.summaryMeta,
       );
@@ -74,7 +75,8 @@ class AppDatabase extends _$AppDatabase {
                 concept: n.concept,
                 state: n.state,
                 isPrereq: Value(n.isPrereq),
-                sourceArticlesJson: Value(jsonEncode(n.sourceArticles)),
+                sourceArticlesJson:
+                    Value(jsonEncode(n.sourceArticles.map((a) => a.toJson()).toList())),
                 summaryMeta: Value(n.summaryMeta),
                 updatedAt: now,
               )),
@@ -146,15 +148,19 @@ class AppDatabase extends _$AppDatabase {
                   parentConcept: Value(parentOf[n.id]),
                   level: Value(n.isPrereq ? 1 : 0),
                   correct: n.isUnderstood,
-                  articleTitle: Value(
-                      n.sourceArticles.isEmpty ? null : n.sourceArticles.last),
+                  articleTitle: Value(n.sourceArticles.isEmpty
+                      ? null
+                      : n.sourceArticles.last.label),
                   occurredAt: now,
                 )),
       );
     });
 
     // 출처 기사 제목을 선호 패턴 가중치로 환산(간이 랭킹 근거).
-    final titles = <String>{for (final n in graph.nodes) ...n.sourceArticles};
+    final titles = <String>{
+      for (final n in graph.nodes)
+        for (final a in n.sourceArticles) a.label,
+    };
     for (final title in titles) {
       await into(articlePreferences).insertOnConflictUpdate(
         ArticlePreferencesCompanion.insert(
@@ -171,8 +177,8 @@ class AppDatabase extends _$AppDatabase {
     final now = DateTime.now().toUtc();
     final counts = <String, int>{};
     for (final n in graph.nodes) {
-      for (final t in n.sourceArticles) {
-        counts[t] = (counts[t] ?? 0) + 1;
+      for (final a in n.sourceArticles) {
+        counts[a.label] = (counts[a.label] ?? 0) + 1;
       }
     }
     final known = (await select(appliedScraps).get())

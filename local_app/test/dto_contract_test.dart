@@ -15,7 +15,10 @@ void main() {
             concept: '실질금리',
             state: NodeState.notUnderstood,
             isPrereq: true,
-            sourceArticles: ['기사 A', '기사 B'],
+            sourceArticles: [
+              SourceArticle(url: 'https://news.example.com/a', title: '기사 A'),
+              SourceArticle(url: 'https://news.example.com/b', title: '기사 B'),
+            ],
             summaryMeta: '명목금리에서 물가상승률을 뺀 값',
           ),
         ],
@@ -31,8 +34,10 @@ void main() {
       expect(node.concept, '실질금리');
       expect(node.state, NodeState.notUnderstood);
       expect(node.isPrereq, isTrue);
-      expect(node.sourceArticles, ['기사 A', '기사 B']);
+      expect(node.sourceArticles.map((a) => a.title), ['기사 A', '기사 B']);
+      expect(node.sourceArticles.first.url, 'https://news.example.com/a');
       expect(node.summaryMeta, '명목금리에서 물가상승률을 뺀 값');
+      expect(node.promoted, isTrue);
 
       expect(restored.edges.single.from, 'c_물가상승률');
       expect(restored.edges.single.to, 'c_실질금리');
@@ -62,17 +67,41 @@ void main() {
       expect(restored.nodes.single.concept, 'y');
       expect(restored.nodes.single.state, NodeState.unknown);
       expect(restored.nodes.single.sourceArticles, isEmpty);
+      expect(restored.nodes.single.promoted, isTrue);
       expect(restored.edges, isEmpty);
+    });
+
+    test('구형 로컬 데이터(제목 문자열)도 흡수한다', () {
+      // 예전 기기에 저장된 sourceArticles 는 문자열 배열이다. 서버 계약은
+      // 객체만 허용하지만, 이미 저장된 데이터를 버릴 이유는 없다.
+      final restored = Graph.fromJson({
+        'nodes': [
+          {'id': 'z', 'sourceArticles': ['옛 기사 제목']},
+        ],
+      });
+
+      final article = restored.nodes.single.sourceArticles.single;
+      expect(article.title, '옛 기사 제목');
+      expect(article.url, isEmpty);
+      expect(article.hasUrl, isFalse);
+      expect(article.label, '옛 기사 제목');
     });
   });
 
-  test('Recommendations 라운드트립', () {
+  test('Recommendations 라운드트립 — 결핍/확장/기사 세 갈래', () {
     const original = Recommendations(
-      concepts: [
+      gapConcepts: [
         ConceptRecommendation(
-          concept: '명목금리',
-          reason: '실질금리의 짝 개념',
-          relatedNodeId: 'c_실질금리',
+          conceptId: 'c_실질금리',
+          conceptTag: '실질금리',
+          reason: '진단에서 놓친 개념',
+        ),
+      ],
+      expansionConcepts: [
+        ExpansionRecommendation(
+          conceptId: 'c_기준금리',
+          conceptTag: '기준금리',
+          reason: ExpansionReason.retry,
         ),
       ],
       articles: [
@@ -86,10 +115,23 @@ void main() {
 
     final restored = Recommendations.fromJson(original.toJson());
 
-    expect(restored.concepts.single.concept, '명목금리');
-    expect(restored.concepts.single.relatedNodeId, 'c_실질금리');
+    expect(restored.gapConcepts.single.conceptId, 'c_실질금리');
+    expect(restored.gapConcepts.single.conceptTag, '실질금리');
+    expect(restored.expansionConcepts.single.conceptTag, '기준금리');
+    expect(restored.expansionConcepts.single.reason, ExpansionReason.retry);
     expect(restored.articles.single.url, 'https://example.com/a');
     expect(restored.articles.single.publisher, '한겨레');
+  });
+
+  test('서버가 모르는 확장 신호가 와도 파싱은 살아남는다', () {
+    final restored = Recommendations.fromJson({
+      'expansionConcepts': [
+        {'conceptId': 'c_x', 'conceptTag': 'X', 'reason': 'brand_new_signal'},
+      ],
+    });
+
+    expect(restored.expansionConcepts.single.reason, ExpansionReason.unknown);
+    expect(restored.expansionConcepts.single.reason.label, isNotEmpty);
   });
 
   test('UserContext는 서버가 기대하는 키로 직렬화된다', () {

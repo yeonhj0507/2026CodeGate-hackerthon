@@ -130,17 +130,39 @@ class MockApiClient implements ApiClient {
     );
   }
 
-  /// 반영할 새 스크랩이 없을 때: 남아 있는 미이해 노드를 근거로 추천을 만든다.
+  /// 반영할 새 스크랩이 없을 때: 남아 있는 그래프만으로 추천을 만든다.
+  ///
+  /// 서버 `recommend.py` 와 같은 규칙 — 미이해는 결핍(gap)으로, 선행이 이해완료인데
+  /// 상위가 미이해로 남은 경우는 확장(retry)으로 뽑는다.
   Recommendations _fallbackRecommendations(Graph graph) {
     final unresolved = graph.nodes.where((n) => n.isNotUnderstood).toList();
     if (unresolved.isEmpty) return Recommendations.empty;
+
+    // 재도전 신호: 선행(from)이 이해완료인데 후행(to)이 미이해로 남은 경우.
+    final retryIds = <String>{
+      for (final e in graph.edges)
+        if (graph.nodeById(e.from)?.isUnderstood == true &&
+            graph.nodeById(e.to)?.isNotUnderstood == true)
+          e.to,
+    };
+
     return Recommendations(
-      concepts: unresolved
+      gapConcepts: unresolved
+          .where((n) => !retryIds.contains(n.id))
           .take(3)
           .map((n) => ConceptRecommendation(
-                concept: n.concept,
+                conceptId: n.id,
+                conceptTag: n.concept,
                 reason: '아직 ‘미이해’로 남아 있는 개념입니다.',
-                relatedNodeId: n.id,
+              ))
+          .toList(),
+      expansionConcepts: retryIds
+          .map(graph.nodeById)
+          .whereType<GraphNode>()
+          .map((n) => ExpansionRecommendation(
+                conceptId: n.id,
+                conceptTag: n.concept,
+                reason: ExpansionReason.retry,
               ))
           .toList(),
       articles: const [],

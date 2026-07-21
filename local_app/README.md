@@ -104,8 +104,9 @@ lib/
     "concept": "실질금리",
     "state": "understood" | "not_understood" | "unknown",
     "isPrereq": true,
-    "sourceArticles": ["기사 제목", "..."],   // 크로스기사 병합 시 누적
-    "summaryMeta": "미이해 개념 재요약(명세 §4.4 개인화 요약 흡수분)"
+    "sourceArticles": [{ "url": "https://...", "title": "기사 제목" }],  // URL이 식별자, 크로스기사 병합 시 누적
+    "summaryMeta": "미이해 개념 재요약(명세 §4.4 개인화 요약 흡수분)",
+    "promoted": true                          // 그래프 노출 여부(확장 후보 예약 필드)
   }],
   "edges": [{ "from": "c_물가상승률", "to": "c_실질금리", "type": "prereq" | "related" }]
 }
@@ -116,10 +117,11 @@ lib/
   "articlePreferences": [{ "keyword", "category", "weight" }]
 }
 
-// recommendations
+// recommendations — 결핍 / 확장 / 기사 세 갈래(명세 §4.4)
 {
-  "concepts": [{ "concept", "reason", "relatedNodeId" }],
-  "articles": [{ "title", "url", "publisher", "reason" }]
+  "gapConcepts":       [{ "conceptId", "conceptTag", "reason" }],          // reason 은 자연어
+  "expansionConcepts": [{ "conceptId", "conceptTag", "reason" }],          // reason 은 "retry" | "sibling"
+  "articles":          [{ "title", "url", "publisher", "reason" }]
 }
 ```
 
