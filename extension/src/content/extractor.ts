@@ -197,7 +197,13 @@ function acceptsText(text: string, isHeading: boolean, readableLower: string): b
  */
 function collectBrSegments(root: Element, doc: Document, readableLower: string): Candidate[] {
   const container = findBrContainer(root)
-  if (!container || isInNoise(container)) return []
+  // 컨테이너는 findBrContainer 가 "<br> 이 가장 많은 요소"라는 강한 본문 신호로 이미
+  // 고른 것이다. 여기에 조상 전체 노이즈 워크(isInNoise)를 적용하면, 본문 래퍼의
+  // 조상 class 가 노이즈스러울 때 본문이 통째로 버려진다. 실측: 동아일보 본문
+  // <section class="news_view"> 의 조상 <div class="inner inner_aside"> 가 NOISE 의
+  // "aside" 토큰(_aside)에 걸려 <br> 폴백이 본문을 폐기했다. 컨테이너 자신만 검사한다
+  // (leaf 블록 경로의 isInNoise 는 조상까지 보는 그대로 유지 — 댓글 <p> 등 배제 목적).
+  if (!container || isSelfNoise(container)) return []
 
   const out: Candidate[] = []
   for (const nodes of splitByBr(container)) {
@@ -344,6 +350,11 @@ function isInNoise(el: Element): boolean {
     cur = cur.parentElement
   }
   return false
+}
+
+/** 조상은 보지 않고 요소 **자신**의 class/id만 노이즈 패턴에 걸리는지(<br> 폴백 컨테이너용). */
+function isSelfNoise(el: Element): boolean {
+  return NOISE_PATTERN.test(el.id) || NOISE_PATTERN.test(classNameOf(el))
 }
 
 /** className이 문자열이 아닌 경우(SVGAnimatedString 등) 방어. */
