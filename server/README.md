@@ -26,7 +26,7 @@ server/
 │     ├─ schemas.py      # API 계약 (필드명 고정)
 │     ├─ quiz/           # 문단 분할 · LLM 출력 정규화/검증
 │     ├─ scrap/          # 버퍼 append · TTL/상한 정리
-│     ├─ thoughtmap/     # merge(순수) · recommend · service(트랜잭션)
+│     ├─ thoughtmap/     # merge(순수) · recommend(결핍·확장) · service(트랜잭션)
 │     └─ llm/            # base(프로토콜) · mock · claude · prompts
 ├─ alembic/              # 마이그레이션 (0001 users → 0002 도메인 테이블 → 0003 스크랩 URL화)
 ├─ seed/                 # 제휴 기사 데이터셋
@@ -92,8 +92,17 @@ python scripts/demo_flow.py   # 로그인 → 흐름 A → 흐름 B 엔드투엔
   익스텐션의 앵커 매칭 리스크(구현계획① §3.3)를 서버가 보증하기 위함이다.
 - 엣지 방향은 `from` = 선행 개념, `to` = 후행 개념. 스크랩의 `parentConcept` 가 후행이고
   `conceptTag` 가 선행이다(재질문은 얕은 개념으로 내려가므로).
-- `/thoughtmap/update` 응답의 `recommendations` 는 `{concepts: [{concept, reason}],
-  articles: [{title, url, publisher, summary, matchedConcepts}]}`. 로컬앱 DTO에 아직 없으니 맞춰야 한다.
+- `/thoughtmap/update` 응답의 `recommendations` 는 **세 갈래**다(명세 §4.4):
+  ```
+  {
+    gapConcepts:       [{conceptId, conceptTag, reason}],   // 결핍 보완, reason 은 자연어
+    expansionConcepts: [{conceptId, conceptTag, reason}],   // 심화, reason 은 "retry"|"sibling"
+    articles:          [{title, url, publisher, summary, matchedConcepts}]
+  }
+  ```
+  두 개념 목록은 같은 모양이고 `conceptId` 는 그래프 노드 id 라 로컬앱이 위치를 짚을 수 있다.
+  `expansionConcepts` 의 `reason` 은 신호 종류이며 사용자에게 보일 문구 매핑은 로컬앱 소관이다.
+  같은 개념이 두 목록에 동시에 오르지 않는다(확장 쪽이 우선).
 
 ## LLM
 

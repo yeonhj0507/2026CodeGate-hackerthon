@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../data/dto/graph.dart';
 import '../providers/providers.dart';
@@ -15,6 +16,13 @@ class NodeDetailPanel extends ConsumerWidget {
 
   final GraphNode node;
   final Graph graph;
+
+  /// 출처 기사 원문 열기. 실패해도 조용히 넘긴다 — 부가 동작이라 흐름을 막지 않는다.
+  Future<void> _openArticle(SourceArticle article) async {
+    final uri = Uri.tryParse(article.url);
+    if (uri == null) return;
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -105,20 +113,30 @@ class NodeDetailPanel extends ConsumerWidget {
                     : '출처 기사',
               ),
               const SizedBox(height: 6),
-              for (final title in node.sourceArticles)
+              for (final article in node.sourceArticles)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 6),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Icon(Icons.article_outlined,
-                          size: 15, color: scheme.outline),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(title,
-                            style: const TextStyle(fontSize: 12.5, height: 1.4)),
-                      ),
-                    ],
+                  child: InkWell(
+                    // URL 이 있으면 원문을 외부 브라우저로 연다.
+                    onTap: article.hasUrl ? () => _openArticle(article) : null,
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(Icons.article_outlined,
+                            size: 15, color: scheme.outline),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(article.label,
+                              style:
+                                  const TextStyle(fontSize: 12.5, height: 1.4)),
+                        ),
+                        if (article.hasUrl) ...[
+                          const SizedBox(width: 6),
+                          Icon(Icons.open_in_new,
+                              size: 13, color: scheme.outline),
+                        ],
+                      ],
+                    ),
                   ),
                 ),
             ],
