@@ -12,11 +12,23 @@ import time
 from app.core.config import get_settings
 from app.domain.llm.claude import _client, _log_timing
 from app.domain.search.base import FoundArticle
+from app.domain.search.news_domains import SEARCHABLE_NEWS_DOMAINS, host_of, is_news
 
 logger = logging.getLogger(__name__)
 
 # Opus 4.8 이 지원하는 최신 변형(동적 필터링 내장). 코드 실행 도구를 따로 선언하면 안 된다.
-WEB_SEARCH_TOOL = {"type": "web_search_20260209", "name": "web_search", "max_uses": 2}
+#
+# allowed_domains 로 언론사만 훑게 한다. 이게 없으면 나무위키·네이버 지식백과·블로그가
+# 상위를 차지한다. 도구가 이 힌트를 어겨도 _collect 가 한 번 더 거르므로 이중 방어다.
+#
+# 크롤러를 막아 둔 언론사는 빼야 한다(SEARCHABLE_NEWS_DOMAINS). 하나라도 들어가면
+# 400 으로 호출 전체가 죽는다 - 일부만 걸러지는 게 아니다.
+WEB_SEARCH_TOOL = {
+    "type": "web_search_20260209",
+    "name": "web_search",
+    "max_uses": 2,
+    "allowed_domains": list(SEARCHABLE_NEWS_DOMAINS),
+}
 
 SYSTEM = """\
 당신은 한국어 뉴스 기사를 찾아 주는 검색 도우미다.
@@ -84,18 +96,12 @@ def _collect(message, limit: int) -> list[FoundArticle]:
             if not url or url in seen:
                 continue
             seen.add(url)
-            found.append(FoundArticle(title=title or url, url=url, publisher=_host(url)))
+            # 도구가 allowed_domains 를 어길 수 있다. 여기서 최종적으로 거른다 —
+            # "읽을 만한 기사"라고 해 놓고 사전 항목을 보여 주면 안 된다.
+            if not is_news(url):
+                logger.info("뉴스가 아니라 건너뜀: %s", url)
+                continue
+            found.append(FoundArticle(title=title or url, url=url, publisher=host_of(url)))
             if len(found) >= limit:
                 return found
     return found
-
-
-def _host(url: str) -> str:
-    """표시용 출처. 'https://www.hani.co.kr/...' → 'hani.co.kr'"""
-    try:
-        from urllib.parse import urlparse
-
-        host = urlparse(url).netloc
-        return host[4:] if host.startswith("www.") else host
-    except Exception:  # noqa: BLE001
-        return ""

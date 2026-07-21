@@ -49,28 +49,76 @@ def _provider():
 
 
 async def test_live_quiz_matches_contract():
-    raw = await _provider().generate_quiz(ARTICLE_TITLE, PARAGRAPHS)
+    """모델 원출력이 아니라 **서버가 정규화한 결과**를 단언한다.
 
-    quiz = raw["quiz"]
-    assert 2 <= len(quiz) <= 4
+    처음엔 원출력에 대고 `followups <= 1` 을 단언했다가 한 번 실패하고 재실행에서
+    통과했다 — 모델이 가끔 2개를 낸다. 그건 계약 위반이 아니다. 서버
+    (`_clamp_followups`)가 깎아 내보내는 게 설계이므로, 익스텐션이 실제로 받는
+    모양을 검사하는 게 맞다. 모델 변덕으로 흔들리지도 않는다.
+    """
+    from app.domain.quiz.service import MAX_QUIZ_ITEMS, _normalize
+
+    raw = await _provider().generate_quiz(ARTICLE_TITLE, PARAGRAPHS)
+    quiz = _normalize(raw, PARAGRAPHS).quiz
+
+    # 하한은 단언하지 않는다. "2~4개"는 프롬프트로 요청할 뿐 서버가 만들어 낼 수는
+    # 없고, 실제로 1문항만 온 적이 있다(모델 변덕). 상한은 서버가 잠근다.
+    assert 1 <= len(quiz) <= MAX_QUIZ_ITEMS
 
     for item in quiz:
-        assert 0 <= item["paragraphIndex"] < len(PARAGRAPHS)
-        assert len(item["options"]) == 4
-        assert 0 <= item["answerIndex"] < 4
-        assert item["conceptTag"] and item["conceptTag"] != ARTICLE_TITLE
+        assert 0 <= item.paragraphIndex < len(PARAGRAPHS)
+        assert len(item.options) == 4
+        assert 0 <= item.answerIndex < 4
+        assert item.conceptTag and item.conceptTag != ARTICLE_TITLE
+        # anchorText 는 LLM 을 믿지 않고 서버가 문단에서 채운다.
+        assert PARAGRAPHS[item.paragraphIndex].startswith(item.anchorText[:10])
         # 한국어 출력 계약.
-        assert any("가" <= ch <= "힣" for ch in item["question"])
+        assert any("가" <= ch <= "힣" for ch in item.question)
 
-        followups = item["followups"]
-        assert len(followups) <= 1
-        if followups:
-            f1 = followups[0]
-            assert f1["level"] == 1
-            assert len(f1["options"]) == 4
-            assert len(f1["followups"]) <= 1
-            if f1["followups"]:
-                assert f1["followups"][0]["level"] == 2
+        assert len(item.followups) <= 1
+        if item.followups:
+            f1 = item.followups[0]
+            assert f1.level == 1
+            assert len(f1.options) == 4
+            assert len(f1.followups) <= 1
+            if f1.followups:
+                assert f1.followups[0].level == 2
+
+
+async def test_live_explore_explains_concepts_together():
+    """탐색 탭의 존재 이유는 **묶어서** 보는 것이다 — 개별 정의 나열이면 의미가 없다."""
+    concepts = ["기준금리", "환율", "수입물가"]
+    text = await _provider().explain_concepts(concepts)
+
+    assert len(text) > 30
+    assert any("가" <= ch <= "힣" for ch in text)
+    # 고른 개념이 최소한 언급은 돼야 한다.
+    assert sum(1 for c in concepts if c in text) >= 2
+    # 마크다운을 쓰지 말라고 지시했다(로컬앱이 평문으로 그린다).
+    assert "##" not in text and "**" not in text
+
+
+async def test_live_search_returns_news_only():
+    """나무위키·지식백과가 올라오던 문제. allowed_domains + 사후 필터가 실제로 통하는지."""
+    from app.domain.search.claude_search import ClaudeSearchProvider
+    from app.domain.search.news_domains import is_news
+
+    found = await ClaudeSearchProvider().search_articles(["기준금리", "환율"], 3)
+
+    assert found, "언론사로 좁혀도 결과가 나와야 한다 (0건이면 목록이 너무 좁다는 뜻)"
+    for item in found:
+        assert item.url.startswith("http")
+        assert is_news(item.url), f"뉴스가 아닌 결과가 통과했다: {item.url}"
+        assert item.title
+
+
+async def test_live_search_survives_a_topic_with_no_news():
+    """검색이 빈손이어도 예외를 던지지 않아야 한다 — 추천 실패가 동기화를 막으면 안 된다."""
+    from app.domain.search.claude_search import ClaudeSearchProvider
+
+    found = await ClaudeSearchProvider().search_articles(["ㅁㄴㅇㄹ존재하지않는개념ㅋㅋ"], 2)
+
+    assert isinstance(found, list)
 
 
 async def test_live_summaries_use_graph_context_only():

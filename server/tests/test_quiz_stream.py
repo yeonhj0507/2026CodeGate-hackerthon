@@ -95,3 +95,43 @@ async def test_partial_stream_is_not_cached():
     await agen.aclose()  # 첫 문항만 받고 이탈
 
     assert service._cache == {}
+
+
+@pytest.mark.asyncio
+async def test_stream_respects_the_item_cap():
+    """배치와 같은 상한을 탄다.
+
+    상한을 배치에만 걸면 스트리밍으로 들어온 독자만 우회하게 된다 — 같은 기사에서
+    사람마다 문항 수가 달라진다.
+    """
+
+    class _Flood:
+        """상한을 넘겨 쏟아 내는 프로바이더."""
+
+        async def generate_quiz(self, title, paragraphs):
+            return {"quiz": [self._item(i) for i in range(service.MAX_QUIZ_ITEMS + 3)]}
+
+        async def stream_quiz(self, title, paragraphs):
+            for i in range(service.MAX_QUIZ_ITEMS + 3):
+                yield self._item(i)
+
+        @staticmethod
+        def _item(i: int) -> dict:
+            return {
+                "claimId": f"c{i}",
+                "conceptTag": f"개념{i}",
+                "paragraphIndex": 0,
+                "question": "왜 그런가?",
+                "options": ["가", "나", "다", "라"],
+                "answerIndex": 0,
+                "explanation": "설명",
+                "followups": [],
+            }
+
+    service._cache.clear()
+    streamed = await collect(llm=_Flood())
+    assert len(streamed) == service.MAX_QUIZ_ITEMS
+
+    service._cache.clear()
+    batched = await service.generate_quiz(TITLE, BODY, _Flood())
+    assert len(batched.quiz) == service.MAX_QUIZ_ITEMS

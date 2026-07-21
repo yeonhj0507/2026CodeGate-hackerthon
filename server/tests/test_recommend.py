@@ -12,7 +12,7 @@ from app.domain.schemas import (
     GraphNode,
 )
 from app.domain.thoughtmap.recommend import (
-    recommend_expansion_concepts,
+    recommend_retry_concepts,
     recommend_gap_concepts,
 )
 
@@ -35,7 +35,7 @@ def test_retry_signal_recommends_the_unsolved_parent():
         ],
         edges=[edge("통화정책", "기준금리")],
     )
-    out = recommend_expansion_concepts(graph)
+    out = recommend_retry_concepts(graph)
 
     assert [(e.conceptId, e.reason) for e in out] == [("기준금리", "retry")]
 
@@ -50,7 +50,7 @@ def test_sibling_signal_recommends_the_other_prereq():
         ],
         edges=[edge("통화정책", "기준금리"), edge("공개시장운영", "기준금리")],
     )
-    out = recommend_expansion_concepts(graph)
+    out = recommend_retry_concepts(graph)
 
     assert [(e.conceptId, e.reason) for e in out] == [("공개시장운영", "sibling")]
 
@@ -64,7 +64,7 @@ def test_retry_comes_before_sibling():
         ],
         edges=[edge("통화정책", "기준금리"), edge("공개시장운영", "기준금리")],
     )
-    out = recommend_expansion_concepts(graph)
+    out = recommend_retry_concepts(graph)
 
     assert [e.reason for e in out] == ["retry", "sibling"]
 
@@ -78,7 +78,7 @@ def test_cold_start_returns_empty():
         ],
         edges=[edge("통화정책", "기준금리")],
     )
-    assert recommend_expansion_concepts(graph) == []
+    assert recommend_retry_concepts(graph) == []
 
 
 def test_understood_parent_is_not_recommended():
@@ -90,7 +90,7 @@ def test_understood_parent_is_not_recommended():
         ],
         edges=[edge("통화정책", "기준금리")],
     )
-    assert recommend_expansion_concepts(graph) == []
+    assert recommend_retry_concepts(graph) == []
 
 
 def test_understood_prereq_is_not_a_gap():

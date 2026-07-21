@@ -77,20 +77,32 @@ class RecommendationPanel extends ConsumerWidget {
                       for (final c in recommendations.gapConcepts)
                         _ConceptCard(recommendation: c),
                     ],
-                    // 확장 추천은 콜드스타트에 비는 게 정상이라(명세 §4.4 한계)
-                    // 섹션을 숨기는 대신 안내를 띄운다 — 없어진 게 아니라 아직
-                    // 이르다는 뜻이다.
+                    // 확장은 "아직 내 그래프에 없는 새 개념"이다. 제휴 데이터셋이
+                    // 내 주제를 못 덮으면 비는 게 정상이라, 섹션을 숨기는 대신
+                    // 안내를 띄운다 — 없어진 게 아니라 아직 재료가 없다는 뜻이다.
                     const SizedBox(height: 22),
                     const _SectionTitle('확장 개념'),
+                    const SizedBox(height: 2),
+                    const _SectionCaption('아는 개념에서 새로 알 수 있는 키워드'),
                     const SizedBox(height: 10),
                     if (recommendations.expansionConcepts.isEmpty)
                       const _EmptyHint(
-                        text: '아직 확장 추천이 없어요.\n'
-                            '개념을 이해완료하면 여기에서 다음 단계를 알려드릴게요.',
+                        text: '아직 추천할 키워드가 없어요.\n'
+                            '기사를 더 읽으면 아는 개념 주변에서 찾아 드릴게요.',
                       )
                     else
                       for (final e in recommendations.expansionConcepts)
                         _ExpansionCard(recommendation: e),
+                    // 다시 도전은 오답 이력이 있어야 생긴다. 없을 때는 섹션째
+                    // 숨긴다 — 확장과 달리 "아직 이르다"가 곧 "틀린 게 없다"라
+                    // 굳이 안내할 일이 아니다.
+                    if (recommendations.retryConcepts.isNotEmpty) ...[
+                      const SizedBox(height: 22),
+                      const _SectionTitle('다시 도전할 개념'),
+                      const SizedBox(height: 10),
+                      for (final e in recommendations.retryConcepts)
+                        _RetryCard(recommendation: e),
+                    ],
                     if (recommendations.articles.isNotEmpty) ...[
                       const SizedBox(height: 22),
                       const _SectionTitle('읽을 만한 기사'),
@@ -156,11 +168,86 @@ class _ConceptCard extends ConsumerWidget {
   }
 }
 
-/// 확장 개념 카드. 이해한 개념을 발판 삼은 다음 걸음이다.
-class _ExpansionCard extends ConsumerWidget {
+/// 확장 개념 카드 — 아직 내 그래프에 없는 새 키워드.
+///
+/// 카드를 눌러도 짚어 줄 노드가 없다(지도에는 임시 회색 노드로만 떠 있다).
+/// 대신 **그 개념이 실제로 쓰인 기사**로 바로 갈 수 있게 한다.
+class _ExpansionCard extends StatelessWidget {
   const _ExpansionCard({required this.recommendation});
 
   final ExpansionRecommendation recommendation;
+
+  Future<void> _open(BuildContext context) async {
+    final uri = Uri.tryParse(recommendation.articleUrl);
+    final ok = uri != null &&
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!ok && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('링크를 열지 못했습니다: ${recommendation.articleUrl}')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _CardShell(
+      onTap: recommendation.hasArticle ? () => _open(context) : null,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  recommendation.conceptTag,
+                  style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textPrimary),
+                ),
+              ),
+              const Icon(Icons.auto_awesome, size: 15, color: AppColors.pink),
+            ],
+          ),
+          const SizedBox(height: 6),
+          // 서버는 근거 개념만 주고 문구는 앱이 만든다(계약 §4).
+          Text(
+            recommendation.label,
+            style: const TextStyle(
+                fontSize: 12, color: AppColors.textMuted, height: 1.5),
+          ),
+          if (recommendation.hasArticle) ...[
+            const SizedBox(height: 8),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(Icons.article_outlined,
+                    size: 13, color: AppColors.pink),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    recommendation.articleTitle,
+                    style: const TextStyle(
+                        fontSize: 11.5, color: AppColors.pink, height: 1.4),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                const Icon(Icons.open_in_new,
+                    size: 12, color: AppColors.textMuted),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// 다시 도전할 개념 카드. 내 그래프 안의 노드라 눌러서 상세를 펼 수 있다.
+class _RetryCard extends ConsumerWidget {
+  const _RetryCard({required this.recommendation});
+
+  final RetryRecommendation recommendation;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -180,12 +267,11 @@ class _ExpansionCard extends ConsumerWidget {
                       color: AppColors.textPrimary),
                 ),
               ),
-              if (recommendation.reason == ExpansionReason.retry)
+              if (recommendation.reason == RetryReason.retry)
                 const Icon(Icons.replay, size: 15, color: AppColors.pink),
             ],
           ),
           const SizedBox(height: 6),
-          // 서버는 신호 종류만 주고 문구는 앱이 만든다(계약 §4).
           Text(
             recommendation.reason.label,
             style: const TextStyle(
@@ -194,6 +280,18 @@ class _ExpansionCard extends ConsumerWidget {
         ],
       ),
     );
+  }
+}
+
+class _SectionCaption extends StatelessWidget {
+  const _SectionCaption(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(text,
+        style: const TextStyle(fontSize: 11, color: AppColors.textMuted));
   }
 }
 

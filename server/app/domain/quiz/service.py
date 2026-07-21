@@ -16,6 +16,8 @@ from app.domain.llm.base import LlmProvider
 from app.domain.schemas import QuizItem, QuizResponse
 
 ANCHOR_LEN = 50
+# 한 기사에서 낼 문항 상한(명세 §3.2 "핵심 주장 2~4개").
+MAX_QUIZ_ITEMS = 4
 _CACHE_TTL_SEC = 60 * 30
 _cache: dict[str, tuple[float, QuizResponse]] = {}
 
@@ -61,7 +63,11 @@ def _normalize(raw: dict, paragraphs: list[str]) -> QuizResponse:
         item = normalize_item(entry, paragraphs)
         if item is not None:
             items.append(item)
-    return QuizResponse(quiz=items)
+
+    # 개수는 프롬프트로만 요청하고 있었다(명세 §3.2 "핵심 주장 2~4개"). 모델이 더 내면
+    # 그대로 나가 한 기사에서 문항이 쏟아진다. strict 스키마는 minItems/maxItems 를
+    # 지원하지 않으므로(400) 여기서 잠근다. 적게 오는 쪽은 만들어 낼 수 없어 그대로 둔다.
+    return QuizResponse(quiz=items[:MAX_QUIZ_ITEMS])
 
 
 def normalize_item(entry, paragraphs: list[str]) -> QuizItem | None:
@@ -163,6 +169,10 @@ async def stream_quiz(title: str, body: str, llm: LlmProvider) -> AsyncIterator[
             continue
         items.append(item)
         yield item
+        # 배치 경로와 같은 상한을 건다. 여기서 빠뜨리면 스트리밍으로 들어온
+        # 독자만 문항 상한을 우회한다.
+        if len(items) >= MAX_QUIZ_ITEMS:
+            break
 
     if not items:
         raise AppError(

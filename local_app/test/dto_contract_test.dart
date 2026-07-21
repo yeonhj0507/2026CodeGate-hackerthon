@@ -168,9 +168,18 @@ void main() {
       ],
       expansionConcepts: [
         ExpansionRecommendation(
+          conceptId: 'c_수입물가',
+          conceptTag: '수입물가',
+          viaConcepts: ['환율'],
+          articleTitle: '환율과 물가',
+          articleUrl: 'https://partner.example.com/fx/1',
+        ),
+      ],
+      retryConcepts: [
+        RetryRecommendation(
           conceptId: 'c_기준금리',
           conceptTag: '기준금리',
-          reason: ExpansionReason.retry,
+          reason: RetryReason.retry,
         ),
       ],
       articles: [
@@ -186,21 +195,40 @@ void main() {
 
     expect(restored.gapConcepts.single.conceptId, 'c_실질금리');
     expect(restored.gapConcepts.single.conceptTag, '실질금리');
-    expect(restored.expansionConcepts.single.conceptTag, '기준금리');
-    expect(restored.expansionConcepts.single.reason, ExpansionReason.retry);
+    // 확장은 아직 그래프에 없는 새 개념이고, 무엇을 발판으로 왔는지를 싣는다.
+    expect(restored.expansionConcepts.single.conceptTag, '수입물가');
+    expect(restored.expansionConcepts.single.viaConcepts, ['환율']);
+    expect(restored.expansionConcepts.single.articleUrl,
+        'https://partner.example.com/fx/1');
+    expect(restored.expansionConcepts.single.hasArticle, isTrue);
+    // 다시 도전은 그래프 안의 노드다.
+    expect(restored.retryConcepts.single.conceptTag, '기준금리');
+    expect(restored.retryConcepts.single.reason, RetryReason.retry);
     expect(restored.articles.single.url, 'https://example.com/a');
     expect(restored.articles.single.publisher, '한겨레');
   });
 
-  test('서버가 모르는 확장 신호가 와도 파싱은 살아남는다', () {
+  test('서버가 모르는 재도전 신호가 와도 파싱은 살아남는다', () {
     final restored = Recommendations.fromJson({
-      'expansionConcepts': [
+      'retryConcepts': [
         {'conceptId': 'c_x', 'conceptTag': 'X', 'reason': 'brand_new_signal'},
       ],
     });
 
-    expect(restored.expansionConcepts.single.reason, ExpansionReason.unknown);
-    expect(restored.expansionConcepts.single.reason.label, isNotEmpty);
+    expect(restored.retryConcepts.single.reason, RetryReason.unknown);
+    expect(restored.retryConcepts.single.reason.label, isNotEmpty);
+  });
+
+  test('확장에 근거 개념이 없어도 안내 문구는 나온다(구버전 서버 호환)', () {
+    final restored = Recommendations.fromJson({
+      'expansionConcepts': [
+        {'conceptId': 'c_x', 'conceptTag': 'X'},
+      ],
+    });
+
+    expect(restored.expansionConcepts.single.viaConcepts, isEmpty);
+    expect(restored.expansionConcepts.single.label, isNotEmpty);
+    expect(restored.expansionConcepts.single.hasArticle, isFalse);
   });
 
   test('UserContext는 서버가 기대하는 키로 직렬화된다', () {

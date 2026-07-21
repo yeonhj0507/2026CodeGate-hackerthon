@@ -198,9 +198,33 @@ class ConceptRecommendation(Strict):
 
 
 class ExpansionConcept(Strict):
-    """확장 추천 — 이해완료를 발판 삼은 심화(명세 §4.4, 신규).
+    """확장 추천 — **아는 개념에서 뻗어나가는 새 키워드**.
 
-    `reason` 은 자연어가 아니라 신호 종류다. 사용자에게 보일 문구 매핑은 로컬앱 소관.
+    아직 그래프에 없는 개념만 온다. 그래서 `conceptId` 는 그래프 노드 id 가 아니라
+    정규화 키이며, 로컬앱은 이 항목을 그래프에서 찾을 수 없다(수락 전에는 노드가
+    없는 게 정상이다 — 명세 §4.4 의 `promoted` 흐름).
+
+    `reason` 은 자연어가 아니라 신호 종류다. 문구 매핑은 로컬앱 소관.
+    - neighbor: 내가 이해한 개념과 같은 기사에서 함께 다뤄지는 개념
+    """
+
+    conceptId: str
+    conceptTag: str
+    reason: Literal["neighbor"] = "neighbor"
+    # 이 개념을 데려온 근거 — 함께 등장한 내 개념들. 로컬앱이 이유를 설명할 수 있다.
+    viaConcepts: list[str] = Field(default_factory=list)
+    # 이 개념이 실제로 쓰인 기사. 카드에서 바로 읽으러 갈 수 있게 함께 보낸다.
+    articleTitle: str = ""
+    articleUrl: str = ""
+
+
+class RetryConcept(Strict):
+    """다시 도전할 개념 — 오답을 되짚는 신호.
+
+    확장 추천과 분리한다. 둘 다 "이해완료를 발판 삼는다"는 점은 같지만, 이쪽은
+    **이미 내 그래프에 있고 틀린 것**이고 확장은 **아직 없는 새 것**이다. 한 섹션에
+    섞으면 "확장"이라는 이름이 오답 복기를 가리키게 된다.
+
     - retry:   선행을 이해했으니 원래 주장에 다시 도전
     - sibling: 같은 상위 개념을 공유하는 옆 갈래
     """
@@ -223,6 +247,7 @@ class ArticleRecommendation(Strict):
 class Recommendations(Strict):
     gapConcepts: list[ConceptRecommendation] = Field(default_factory=list)
     expansionConcepts: list[ExpansionConcept] = Field(default_factory=list)
+    retryConcepts: list[RetryConcept] = Field(default_factory=list)
     articles: list[ArticleRecommendation] = Field(default_factory=list)
 
 
