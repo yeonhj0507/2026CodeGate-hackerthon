@@ -23,6 +23,7 @@ from app.core.config import get_settings
 from app.core.errors import AppError
 from app.domain.llm import prompts
 from app.domain.llm.base import ConceptContext
+from app.domain.llm.jsonstream import JsonArrayScanner
 
 logger = logging.getLogger(__name__)
 
@@ -105,6 +106,57 @@ class ClaudeProvider:
         payload = _tool_input(message, prompts.QUIZ_TOOL["name"])
         _log_timing("quiz", message, time.monotonic() - started, payload)
         return payload
+
+    async def stream_quiz(self, title: str, paragraphs: list[str]):
+        """generate_quiz 와 같은 1회 호출. 다른 건 문항이 도착하는 시점뿐이다.
+
+        tool 입력은 `input_json_delta` 로 조각조각 온다. 이어붙인 중간 상태는 깨진
+        JSON 이라 통째로는 파싱되지 않으므로, 배열 원소가 닫히는 순간을 스캐너가
+        잡아 그 구간만 파싱한다(jsonstream.py).
+        """
+        numbered = "\n\n".join(f"[{i}] {p}" for i, p in enumerate(paragraphs))
+        user = prompts.QUIZ_USER_TEMPLATE.format(title=title, paragraphs=numbered)
+
+        scanner = JsonArrayScanner("quiz")
+        emitted = 0
+        started = time.monotonic()
+
+        try:
+            async with _client().messages.stream(
+                model=self._model,
+                max_tokens=QUIZ_MAX_TOKENS,
+                system=prompts.QUIZ_SYSTEM,
+                messages=[{"role": "user", "content": user}],
+                tools=[prompts.QUIZ_TOOL_STREAMING],
+                tool_choice={"type": "tool", "name": prompts.QUIZ_TOOL["name"]},
+                thinking={"type": "adaptive"},
+                output_config={"effort": "high"},
+            ) as stream:
+                async for event in stream:
+                    if getattr(event, "type", None) != "content_block_delta":
+                        continue
+                    delta = getattr(event, "delta", None)
+                    if getattr(delta, "type", None) != "input_json_delta":
+                        continue
+                    for item in scanner.feed(delta.partial_json):
+                        emitted += 1
+                        yield item
+
+                message = await stream.get_final_message()
+        except Exception as exc:  # noqa: BLE001 - 아래에서 유형별로 변환
+            raise _as_app_error(exc) from exc
+
+        # 최종 응답으로 두 가지를 한다: 거절·잘림 판정(_tool_input)과 누락 복구.
+        # 스캐너가 경계를 놓쳐 중간에 멈췄더라도 여기서 남은 문항을 마저 내보내므로,
+        # 스트리밍이 어긋나도 **결과가 줄어들지는 않는다** — 일찍 오지 않을 뿐이다.
+        payload = _tool_input(message, prompts.QUIZ_TOOL["name"])
+        rest = payload.get("quiz", [])[emitted:]
+        if rest:
+            logger.warning("quiz stream desync: %d개를 최종 응답에서 복구했다", len(rest))
+        for item in rest:
+            yield item
+
+        _log_timing("quiz-stream", message, time.monotonic() - started, payload)
 
     async def summarize_concepts(self, items: list[ConceptContext]) -> dict[str, str]:
         if not items:

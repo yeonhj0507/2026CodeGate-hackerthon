@@ -4,6 +4,7 @@
 `LLM_PROVIDER` 환경변수로 mock/claude 를 갈아끼운다.
 """
 
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import Protocol
 
@@ -34,6 +35,15 @@ class ConceptContext:
 class LlmProvider(Protocol):
     async def generate_quiz(self, title: str, paragraphs: list[str]) -> dict:
         """`{"quiz": [...]}` 형태의 원시 dict 를 반환. 검증은 호출부가 한다."""
+        ...
+
+    def stream_quiz(self, title: str, paragraphs: list[str]) -> AsyncIterator[dict]:
+        """퀴즈 문항을 **완성되는 대로** 하나씩 흘려보낸다.
+
+        `generate_quiz` 와 같은 1회 호출이고 결과도 같다. 다른 건 도착 시점뿐 —
+        전체가 끝나기를 기다리지 않으므로 익스텐션이 첫 문항을 훨씬 일찍 받는다.
+        원소 하나가 곧 `generate_quiz` 결과의 `quiz[i]` 다.
+        """
         ...
 
     async def summarize_concepts(self, items: list[ConceptContext]) -> dict[str, str]:

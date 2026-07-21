@@ -58,6 +58,16 @@ def _mcq(concept: str, stem: str, seed: str) -> dict:
 
 
 class MockProvider:
+    async def stream_quiz(self, title: str, paragraphs: list[str]):
+        """실서버와 같은 순서로 하나씩 낸다.
+
+        목은 즉시 완성되지만 그대로 쏟아내면 익스텐션의 점진 처리 경로가 한 프레임에
+        끝나 버려 대기 표시·순차 투입이 검증되지 않는다. 그래서 실제로 나눠 보낸다.
+        """
+        payload = await self.generate_quiz(title, paragraphs)
+        for item in payload.get("quiz", []):
+            yield item
+
     async def generate_quiz(self, title: str, paragraphs: list[str]) -> dict:
         if not paragraphs:
             return {"quiz": []}

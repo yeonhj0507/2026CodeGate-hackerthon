@@ -7,6 +7,7 @@
 import hashlib
 import re
 import time
+from collections.abc import AsyncIterator
 
 from pydantic import ValidationError
 
@@ -55,29 +56,39 @@ def _normalize(raw: dict, paragraphs: list[str]) -> QuizResponse:
     - `anchorText` 는 LLM 출력을 믿지 않고 **서버가 문단에서 직접 채운다**.
     - `answerIndex` 가 options 범위를 벗어나면 그 문항은 버린다.
     """
-    items: list[QuizItem] = []
-    last = len(paragraphs) - 1
-
+    items = []
     for entry in raw.get("quiz", []):
-        if not isinstance(entry, dict):
-            continue
-        idx = entry.get("paragraphIndex", 0)
-        if not isinstance(idx, int) or idx < 0:
-            idx = 0
-        idx = min(idx, last)
-
-        entry = {**entry, "paragraphIndex": idx, "anchorText": anchor_for(paragraphs[idx])}
-        entry["followups"] = _clamp_followups(entry.get("followups"), depth=1)
-
-        try:
-            item = QuizItem.model_validate(entry)
-        except ValidationError:
-            continue
-        if not 0 <= item.answerIndex < len(item.options):
-            continue
-        items.append(item)
-
+        item = normalize_item(entry, paragraphs)
+        if item is not None:
+            items.append(item)
     return QuizResponse(quiz=items)
+
+
+def normalize_item(entry, paragraphs: list[str]) -> QuizItem | None:
+    """문항 1건을 계약 스키마로 정규화·검증한다. 못 쓸 문항이면 None.
+
+    스트리밍은 문항이 하나씩 도착하므로 배치와 같은 규칙을 **원소 단위로** 태워야
+    한다. `_normalize` 도 이걸 돌려 쓰므로 두 경로의 결과가 갈릴 일이 없다.
+    """
+    if not isinstance(entry, dict) or not paragraphs:
+        return None
+
+    last = len(paragraphs) - 1
+    idx = entry.get("paragraphIndex", 0)
+    if not isinstance(idx, int) or idx < 0:
+        idx = 0
+    idx = min(idx, last)
+
+    entry = {**entry, "paragraphIndex": idx, "anchorText": anchor_for(paragraphs[idx])}
+    entry["followups"] = _clamp_followups(entry.get("followups"), depth=1)
+
+    try:
+        item = QuizItem.model_validate(entry)
+    except ValidationError:
+        return None
+    if not 0 <= item.answerIndex < len(item.options):
+        return None
+    return item
 
 
 def _clamp_followups(raw, depth: int) -> list:
@@ -121,3 +132,43 @@ async def generate_quiz(title: str, body: str, llm: LlmProvider) -> QuizResponse
 
     _cache[key] = (time.time(), result)
     return result
+
+
+async def stream_quiz(title: str, body: str, llm: LlmProvider) -> AsyncIterator[QuizItem]:
+    """문항을 완성되는 대로 하나씩 흘려보낸다(익스텐션 점진 표시용).
+
+    `generate_quiz` 와 같은 LLM 호출·같은 정규화 규칙을 쓴다. 다른 건 도착 시점뿐이다.
+    캐시가 있으면 그대로 즉시 방출하고, 없으면 스트림이 끝난 뒤 통째로 적재한다 —
+    중간에 끊긴 결과를 캐시에 남기면 다음 독자가 반쪽짜리 퀴즈를 받게 된다.
+    """
+    paragraphs = split_paragraphs(body)
+    if not paragraphs:
+        raise AppError(
+            status_code=422,
+            code="EMPTY_ARTICLE",
+            message="기사 본문에서 문단을 찾지 못했다.",
+        )
+
+    key = _cache_key(title, body)
+    hit = _cache.get(key)
+    if hit and time.time() - hit[0] < _CACHE_TTL_SEC:
+        for item in hit[1].quiz:
+            yield item
+        return
+
+    items: list[QuizItem] = []
+    async for entry in llm.stream_quiz(title, paragraphs):
+        item = normalize_item(entry, paragraphs)
+        if item is None:
+            continue
+        items.append(item)
+        yield item
+
+    if not items:
+        raise AppError(
+            status_code=502,
+            code="LLM_INVALID_OUTPUT",
+            message="퀴즈 생성에 실패했다. 유효한 문항이 하나도 없다.",
+        )
+
+    _cache[key] = (time.time(), QuizResponse(quiz=items))
