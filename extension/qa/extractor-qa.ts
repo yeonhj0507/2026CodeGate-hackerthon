@@ -14,6 +14,7 @@
 
 import { JSDOM } from 'jsdom'
 import { extractArticle, PROBER_IDX_ATTR } from '../src/content/extractor'
+import { isNonArticleUrl, looksLikeArticleList } from '../src/content/page-gate'
 
 // ─── 픽스처 본문 (실제 기사풍 한국어, 문단당 20자 이상) ──────────────────────
 
@@ -176,6 +177,42 @@ console.log('='.repeat(78))
     ).size,
     second?.paragraphs.length,
   )
+}
+
+// ─── 페이지 게이트: 언론사 메인/섹션에서 패널이 뜨지 않아야 한다 ───────────────
+
+/** 목록 페이지형: 기사 카드마다 부모가 다르다(실측 부모종류/문단 0.50~1.00). */
+function listPageLike(): Document {
+  const cards = BODY_SENTENCES.map(
+    (s, i) => `<div class="card"><a href="/article/${1000 + i}"><h3>제목 ${i}</h3></a><p class="lead">${s}</p></div>`,
+  ).join('\n')
+  return html(`<div id="content">${cards}</div>`)
+}
+
+console.log('\n[페이지 게이트 — URL]')
+{
+  // 알려진 언론사: 경로에 4자리 이상 기사 ID 가 없으면 목록으로 본다.
+  check('네이버 섹션', isNonArticleUrl('https://news.naver.com/section/101'), true)
+  check('네이버 메인', isNonArticleUrl('https://news.naver.com/'), true)
+  check('연합 목록', isNonArticleUrl('https://www.yna.co.kr/economy/all'), true)
+  check('중앙 목록', isNonArticleUrl('https://www.joongang.co.kr/money'), true)
+  check('네이버 기사', isNonArticleUrl('https://n.news.naver.com/mnews/article/056/0011234567'), false)
+  check('연합 기사', isNonArticleUrl('https://www.yna.co.kr/view/AKR20260721131700002'), false)
+  check('중앙 기사', isNonArticleUrl('https://www.joongang.co.kr/article/25401234'), false)
+  // 언론사 목록 밖 호스트는 URL로 판단하지 않는다(구조 게이트에 위임).
+  check('위키백과는 판단 보류', isNonArticleUrl('https://ko.wikipedia.org/wiki/기준금리'), false)
+}
+
+console.log('\n[페이지 게이트 — 구조]')
+{
+  const list = extractArticle(listPageLike())
+  const article = extractArticle(naverLike())
+  const yonhap = extractArticle(yonhapLike())
+
+  check('목록형은 목록으로 판정', looksLikeArticleList(list?.paragraphs ?? []), true)
+  check('네이버형 기사는 통과', looksLikeArticleList(article?.paragraphs ?? []), false)
+  check('연합형 기사는 통과', looksLikeArticleList(yonhap?.paragraphs ?? []), false)
+  check('문단 적으면 판정 보류', looksLikeArticleList((article?.paragraphs ?? []).slice(0, 4)), false)
 }
 
 console.log('\n' + '='.repeat(78))

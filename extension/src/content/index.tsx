@@ -18,6 +18,7 @@
 // =============================================================================
 
 import { extractArticle } from './extractor'
+import { isNonArticleUrl, looksLikeArticleList } from './page-gate'
 import { anchorQuizzes } from './anchor'
 import { createParagraphObserver } from './observer'
 import { createSessionQueue } from './session-bind'
@@ -39,9 +40,15 @@ async function requestQuiz(title: string, body: string): Promise<Quiz[]> {
 }
 
 async function boot(): Promise<void> {
+  // 0) URL 게이트: 언론사 메인/섹션 페이지면 추출조차 하지 않는다(§page-gate).
+  if (isNonArticleUrl(location.href)) return
+
   // 1) 본문 추출 + 기사 품질 게이트.
   const extract = extractArticle()
   if (!extract || extract.paragraphs.length < MIN_ARTICLE_PARAGRAPHS) return
+
+  // 1b) 구조 게이트: 문단이 기사 카드마다 흩어져 있으면 목록 페이지로 보고 중단.
+  if (looksLikeArticleList(extract.paragraphs)) return
 
   // 2) 퀴즈 트리 요청. 실패/빈 응답이면 패널 없이 조용히 중단(MVP, 페이지 내 에러 UI 없음).
   let quizzes: Quiz[]
