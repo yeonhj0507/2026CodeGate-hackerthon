@@ -54,15 +54,15 @@ def recommend_gap_concepts(graph: Graph) -> list[ConceptRecommendation]:
         scored[node_id] = (score + points, first_reason)
 
     for edge in graph.edges:
-        # from = 선행 개념. 후행을 모른다면 그 선행부터 확인할 가치가 있다.
+        # to = 선행 개념(from=후행). 후행을 모른다면 그 선행부터 확인할 가치가 있다.
         # 단 **이미 이해완료한 선행은 결핍이 아니다** — 그건 확장 추천(형제 신호) 소관이다.
-        if edge.to in not_understood:
-            state = by_id[edge.from_].state if edge.from_ in by_id else STATE_UNKNOWN
+        if edge.from_ in not_understood:
+            state = by_id[edge.to].state if edge.to in by_id else STATE_UNKNOWN
             if state == STATE_UNKNOWN:
                 bump(
-                    edge.from_,
+                    edge.to,
                     3,
-                    f"'{by_id[edge.to].concept}'을(를) 이해하려면 먼저 짚어야 하는 선행 개념이다.",
+                    f"'{by_id[edge.from_].concept}'을(를) 이해하려면 먼저 짚어야 하는 선행 개념이다.",
                 )
 
     for node_id in not_understood:
@@ -110,12 +110,16 @@ def recommend_retry_concepts(graph: Graph) -> list[RetryConcept]:
     picked: dict[str, RetryConcept] = {}
 
     # (1) 재도전 — 주 신호라 먼저 채운다.
+    #     엣지는 from=후행 → to=선행. 선행을 이미 이해했는데 후행이 미이해면
+    #     "선행을 뚫었으니 원래 막혔던 주장에 다시 도전하라"가 된다.
     for edge in graph.edges:
-        if state_of(edge.from_) == STATE_UNDERSTOOD and state_of(edge.to) == STATE_NOT_UNDERSTOOD:
+        if state_of(edge.to) == STATE_UNDERSTOOD and state_of(edge.from_) == STATE_NOT_UNDERSTOOD:
             picked.setdefault(
-                edge.to,
+                edge.from_,
                 RetryConcept(
-                    conceptId=edge.to, conceptTag=by_id[edge.to].concept, reason="retry"
+                    conceptId=edge.from_,
+                    conceptTag=by_id[edge.from_].concept,
+                    reason="retry",
                 ),
             )
 
@@ -123,7 +127,7 @@ def recommend_retry_concepts(graph: Graph) -> list[RetryConcept]:
     prereqs_by_parent: dict[str, list[str]] = {}
     for edge in graph.edges:
         if edge.from_ in by_id and edge.to in by_id:
-            prereqs_by_parent.setdefault(edge.to, []).append(edge.from_)
+            prereqs_by_parent.setdefault(edge.from_, []).append(edge.to)
 
     for siblings in prereqs_by_parent.values():
         if not any(state_of(s) == STATE_UNDERSTOOD for s in siblings):

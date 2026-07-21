@@ -106,11 +106,12 @@ def merge(graph: Graph, scraps: list[ScrapInput]) -> Graph:
                 parent_node = _ensure_node(nodes, parent_key, parent)
                 _touch_source(parent_node, scrap.article_url, scrap.article_title)
                 if parent_key != key:
-                    # 엣지 방향은 graph.dart 계약(from=선행, to=후행)을 따른다.
-                    # 재질문으로 내려간 개념(conceptTag)이 부모 개념(parentConcept)의 선행이다.
-                    edge_key = (key, parent_key, EDGE_PREREQ)
+                    # 엣지 방향은 from=후행 → to=선행(schemas.GraphEdge 참고).
+                    # 재질문으로 내려간 개념(conceptTag)이 부모 개념(parentConcept)의
+                    # 선행이므로, 부모가 from 이고 내려간 개념이 to 다.
+                    edge_key = (parent_key, key, EDGE_PREREQ)
                     edges.setdefault(
-                        edge_key, GraphEdge(from_=key, to=parent_key, type=EDGE_PREREQ)
+                        edge_key, GraphEdge(from_=parent_key, to=key, type=EDGE_PREREQ)
                     )
 
         # 퀴즈 트리가 들고 있던 선행 관계. **답을 맞혀도 관계는 남는다.**
@@ -136,9 +137,11 @@ def merge(graph: Graph, scraps: list[ScrapInput]) -> Graph:
                 node = _ensure_node(nodes, key, label)
                 _touch_source(node, scrap.article_url, scrap.article_title)
 
+            # from=후행 → to=선행. 익스텐션이 보내는 relations 는 여전히
+            # {from: 선행, to: 후행} 이므로(퀴즈 트리의 표현) 여기서 뒤집어 담는다.
             edges.setdefault(
-                (prereq_key, follower_key, EDGE_PREREQ),
-                GraphEdge(from_=prereq_key, to=follower_key, type=EDGE_PREREQ),
+                (follower_key, prereq_key, EDGE_PREREQ),
+                GraphEdge(from_=follower_key, to=prereq_key, type=EDGE_PREREQ),
             )
 
         # 세션 결과를 노드 상태에 반영. 최신 스크랩이 이전 상태를 덮는다

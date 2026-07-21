@@ -22,8 +22,13 @@ def node(node_id: str, state: str, *, is_prereq: bool = False) -> GraphNode:
 
 
 def edge(prereq: str, parent: str) -> GraphEdge:
-    """선행(from) → 후행(to). graph.dart 계약과 같은 방향."""
-    return GraphEdge(from_=prereq, to=parent)
+    """선행·후행을 받아 그래프 엣지로 만든다.
+
+    인자 순서는 읽기 좋게 (선행, 후행)으로 두되, 실제 엣지는
+    **from=후행 → to=선행** 이다(schemas.GraphEdge). 방향이 바뀌어도 호출부는
+    그대로 두려고 여기서 뒤집는다.
+    """
+    return GraphEdge(from_=parent, to=prereq)
 
 
 def test_retry_signal_recommends_the_unsolved_parent():

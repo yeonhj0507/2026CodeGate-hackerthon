@@ -130,13 +130,13 @@ async def _attach_summaries(graph: Graph, llm: LlmProvider) -> None:
         return
 
     concept_of = {n.id: n.concept for n in graph.nodes}
-    # 엣지는 from=선행 → to=후행. 노드 기준 양쪽 이웃을 모아 둔다.
+    # 엣지는 from=후행 → to=선행(schemas.GraphEdge). 노드 기준 양쪽 이웃을 모아 둔다.
     prereqs: dict[str, list[str]] = {}
     parents: dict[str, list[str]] = {}
     for edge in graph.edges:
         if edge.from_ in concept_of and edge.to in concept_of:
-            prereqs.setdefault(edge.to, []).append(concept_of[edge.from_])
-            parents.setdefault(edge.from_, []).append(concept_of[edge.to])
+            prereqs.setdefault(edge.from_, []).append(concept_of[edge.to])
+            parents.setdefault(edge.to, []).append(concept_of[edge.from_])
 
     items = [
         ConceptContext(
