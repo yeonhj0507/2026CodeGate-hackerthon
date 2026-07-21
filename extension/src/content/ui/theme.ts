@@ -60,10 +60,6 @@ export const PANEL_CSS = /* css */ `
   flex: 0 0 auto;
 }
 .brand { display: flex; align-items: center; gap: 8px; font-weight: 700; }
-.brand .dot {
-  width: 20px; height: 20px; border-radius: 6px;
-  background: linear-gradient(135deg, #FF7A93, #E63B5C);
-}
 .end-btn {
   border: none; background: none; color: var(--accent); font-weight: 700;
   font-size: 12px; cursor: pointer; padding: 4px 6px; border-radius: 6px;

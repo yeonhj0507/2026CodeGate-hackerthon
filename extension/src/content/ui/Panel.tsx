@@ -8,6 +8,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useSession } from '../session'
+import { ProberLogo } from './ProberLogo'
 import { QuestionView } from './QuestionView'
 
 interface Props {
@@ -63,7 +64,7 @@ export function Panel({ onEnd }: Props) {
     <div className="root">
       <header className="header">
         <div className="brand">
-          <span className="dot" />
+          <ProberLogo size={20} />
           <span>프로버</span>
         </div>
         {!ended && (
