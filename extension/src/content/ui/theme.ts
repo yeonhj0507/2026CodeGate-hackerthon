@@ -165,7 +165,7 @@ export const PANEL_CSS = /* css */ `
 `
 
 // ─── 시작 제안 카드 (StartPrompt) ────────────────────────────────────────────
-// 패널과 별도의 shadow root 에 주입된다. 기사 화면을 가리지 않도록 우하단에 뜬다.
+// 패널과 별도의 shadow root 에 주입된다. 익스텐션 아이콘과 가까운 우측 상단에 뜬다.
 
 export const PROMPT_CSS = /* css */ `
 :host { all: initial; }
@@ -180,7 +180,7 @@ export const PROMPT_CSS = /* css */ `
 
   position: fixed;
   right: 20px;
-  bottom: 20px;
+  top: 20px;
   z-index: 2147483000;
 
   width: 260px;
@@ -197,7 +197,7 @@ export const PROMPT_CSS = /* css */ `
 }
 
 @keyframes prompt-in {
-  from { opacity: 0; transform: translateY(8px); }
+  from { opacity: 0; transform: translateY(-8px); }
   to   { opacity: 1; transform: none; }
 }
 
