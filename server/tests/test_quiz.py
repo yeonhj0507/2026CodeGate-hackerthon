@@ -61,3 +61,30 @@ async def test_quiz_rejects_empty_body(client):
     res = await client.post("/quiz", json={"articleTitle": "빈 기사", "articleBody": "   "})
     assert res.status_code == 422
     assert res.json()["error"]["code"] == "EMPTY_ARTICLE"
+
+
+def test_normalize_caps_the_number_of_items():
+    """개수는 프롬프트로만 요청하고 있었다 — 모델이 더 내면 그대로 나갔다.
+
+    strict 스키마가 maxItems 를 지원하지 않아(400) 서버가 잠근다.
+    """
+    from app.domain.quiz.service import MAX_QUIZ_ITEMS, _normalize
+
+    paragraphs = split_paragraphs(ARTICLE_BODY)
+    raw = {
+        "quiz": [
+            {
+                "claimId": f"c{i}",
+                "conceptTag": f"개념{i}",
+                "paragraphIndex": 0,
+                "question": "왜 그런가?",
+                "options": ["가", "나", "다", "라"],
+                "answerIndex": 0,
+                "explanation": "설명",
+                "followups": [],
+            }
+            for i in range(MAX_QUIZ_ITEMS + 3)
+        ]
+    }
+
+    assert len(_normalize(raw, paragraphs).quiz) == MAX_QUIZ_ITEMS

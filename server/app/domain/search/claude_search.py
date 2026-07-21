@@ -11,7 +11,7 @@ import logging
 from app.core.config import get_settings
 from app.domain.llm.claude import _client
 from app.domain.search.base import FoundArticle
-from app.domain.search.news_domains import NEWS_DOMAINS, host_of, is_news
+from app.domain.search.news_domains import SEARCHABLE_NEWS_DOMAINS, host_of, is_news
 
 logger = logging.getLogger(__name__)
 
@@ -19,11 +19,14 @@ logger = logging.getLogger(__name__)
 #
 # allowed_domains 로 언론사만 훑게 한다. 이게 없으면 나무위키·네이버 지식백과·블로그가
 # 상위를 차지한다. 도구가 이 힌트를 어겨도 _collect 가 한 번 더 거르므로 이중 방어다.
+#
+# 크롤러를 막아 둔 언론사는 빼야 한다(SEARCHABLE_NEWS_DOMAINS). 하나라도 들어가면
+# 400 으로 호출 전체가 죽는다 - 일부만 걸러지는 게 아니다.
 WEB_SEARCH_TOOL = {
     "type": "web_search_20260209",
     "name": "web_search",
     "max_uses": 2,
-    "allowed_domains": list(NEWS_DOMAINS),
+    "allowed_domains": list(SEARCHABLE_NEWS_DOMAINS),
 }
 
 SYSTEM = """\

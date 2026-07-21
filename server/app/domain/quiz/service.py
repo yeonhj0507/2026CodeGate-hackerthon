@@ -15,6 +15,8 @@ from app.domain.llm.base import LlmProvider
 from app.domain.schemas import QuizItem, QuizResponse
 
 ANCHOR_LEN = 50
+# 한 기사에서 낼 문항 상한(명세 §3.2 "핵심 주장 2~4개").
+MAX_QUIZ_ITEMS = 4
 _CACHE_TTL_SEC = 60 * 30
 _cache: dict[str, tuple[float, QuizResponse]] = {}
 
@@ -77,7 +79,10 @@ def _normalize(raw: dict, paragraphs: list[str]) -> QuizResponse:
             continue
         items.append(item)
 
-    return QuizResponse(quiz=items)
+    # 개수는 프롬프트로만 요청하고 있었다(명세 §3.2 "핵심 주장 2~4개"). 모델이 더 내면
+    # 그대로 나가 한 기사에서 문항이 쏟아진다. strict 스키마는 minItems/maxItems 를
+    # 지원하지 않으므로(400) 여기서 잠근다. 적게 오는 쪽은 만들어 낼 수 없어 그대로 둔다.
+    return QuizResponse(quiz=items[:MAX_QUIZ_ITEMS])
 
 
 def _clamp_followups(raw, depth: int) -> list:

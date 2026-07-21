@@ -10,7 +10,7 @@
 import pytest
 
 from app.domain.search.claude_search import WEB_SEARCH_TOOL
-from app.domain.search.news_domains import host_of, is_news
+from app.domain.search.news_domains import UNCRAWLABLE_DOMAINS, host_of, is_news
 
 
 @pytest.mark.parametrize(
@@ -46,6 +46,29 @@ def test_rejects_everything_that_is_not_an_outlet(url: str):
     assert not is_news(url)
 
 
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://dic.hankyung.com/economy/view/?seq=1",  # 한경용어사전
+        "https://terms.mk.co.kr/view.php?no=1",
+        "https://blog.donga.com/x/1",
+        "https://shop.chosun.com/item/1",
+    ],
+)
+def test_rejects_non_article_sections_of_news_sites(url: str):
+    """도메인은 언론사인데 내용은 사전·블로그·쇼핑인 경우.
+
+    서브도메인을 통째로 인정했더니 실제 검색 결과가 한경용어사전으로 채워졌다.
+    바로 그 사전을 빼려던 목적이 무너지므로 섹션 단위로 한 번 더 본다.
+    """
+    assert not is_news(url)
+
+
+def test_still_accepts_real_news_subdomains():
+    assert is_news("https://biz.chosun.com/policy/1")
+    assert is_news("https://n.news.mk.co.kr/1")
+
+
 def test_rejects_domains_that_merely_end_with_a_news_name():
     """'chosun.com.evil.kr' 처럼 접미사만 흉내 낸 주소에 속지 않는다."""
     assert not is_news("https://chosun.com.evil.kr/a")
@@ -63,7 +86,23 @@ def test_host_is_trimmed_for_display():
 
 
 def test_tool_is_pointed_at_news_only():
-    """도구 힌트와 사후 필터가 같은 목록을 봐야 어긋나지 않는다."""
+    """도구 힌트와 사후 필터가 어긋나지 않아야 한다."""
     allowed = WEB_SEARCH_TOOL["allowed_domains"]
     assert allowed, "allowed_domains 가 비면 검색이 아무 데나 훑는다"
     assert all(is_news(f"https://{d}/x") for d in allowed)
+
+
+def test_tool_never_asks_for_domains_that_block_the_crawler():
+    """크롤러 차단 도메인이 하나라도 끼면 web_search 호출 전체가 400 으로 죽는다.
+
+    일부만 걸러지는 게 아니라 검색이 통째로 실패한다. 실호출에서만 드러나는
+    종류라 목록 수준에서 고정해 둔다.
+    """
+    allowed = set(WEB_SEARCH_TOOL["allowed_domains"])
+    assert not (allowed & UNCRAWLABLE_DOMAINS)
+
+
+def test_blocked_outlets_are_still_news():
+    """크롤링이 막혔을 뿐 언론사는 맞다 — 제휴 데이터셋에 같은 도메인이 올 수 있다."""
+    assert is_news("https://www.chosun.com/economy/1")
+    assert is_news("https://www.yna.co.kr/view/1")
