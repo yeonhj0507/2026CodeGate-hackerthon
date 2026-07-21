@@ -21,7 +21,9 @@ class ThoughtMapView extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     if (graph.isEmpty) return const _EmptyGraph();
 
-    final selectedId = ref.watch(selectedNodeIdProvider);
+    // 선택 상태는 일부러 여기서 watch하지 않는다. 여기서 watch하면 노드를 고를
+    // 때마다 그래프 전체가 다시 만들어지고 레이아웃이 튄다. 선택 표시는
+    // [_ConceptNode]가 스스로 구독한다.
 
     // DTO → graphview 모델 변환. 엣지가 가리키는 노드가 실제로 존재할 때만
     // 연결한다(서버가 아직 없는 노드를 참조해도 렌더가 깨지지 않게).
@@ -57,39 +59,39 @@ class ThoughtMapView extends ConsumerWidget {
       graph: gvGraph,
       algorithm: gv.SugiyamaAlgorithm(config),
       animated: false,
+      // centerGraph는 쓰지 않는다 — 켜면 graphview가 캔버스를 잘못 잡아 노드가
+      // 아예 보이지 않는다. 대신 좌상단 기준으로 그리고, 캔버스가 좁아지면
+      // 사용자가 InteractiveViewer로 끌어서 본다.
       builder: (gv.Node gvNode) {
         final id = gvNode.key!.value as String;
         final node = graph.nodeById(id);
         if (node == null) return const SizedBox.shrink();
-        return _ConceptNode(
-          node: node,
-          selected: node.id == selectedId,
-          onTap: () => ref.read(selectedNodeIdProvider.notifier).state =
-              node.id == selectedId ? null : node.id,
-        );
+        return _ConceptNode(node: node);
       },
     );
   }
 }
 
-/// 그래프 노드 하나. 색으로 이해상태를, 테두리로 선행개념 여부를 나타낸다.
-class _ConceptNode extends StatelessWidget {
-  const _ConceptNode({
-    required this.node,
-    required this.selected,
-    required this.onTap,
-  });
+/// 그래프 노드 하나. 색으로 이해상태를, 모양으로 선행개념 여부를 나타낸다.
+///
+/// 선택 여부를 자기가 구독하되, **선택돼도 크기가 변하지 않게** 만든다.
+/// 테두리 두께가 바뀌면 노드 크기가 달라져 Sugiyama 레이아웃이 다시 돌고
+/// 지도 전체가 튄다. 그래서 두께는 고정하고 색과 그림자(레이아웃에 영향 없음)로만
+/// 선택을 표시한다.
+class _ConceptNode extends ConsumerWidget {
+  const _ConceptNode({required this.node});
 
   final GraphNode node;
-  final bool selected;
-  final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final style = nodeStyleOf(node);
+    final selected =
+        ref.watch(selectedNodeIdProvider.select((id) => id == node.id));
 
     return GestureDetector(
-      onTap: onTap,
+      onTap: () => ref.read(selectedNodeIdProvider.notifier).state =
+          selected ? null : node.id,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
         constraints: const BoxConstraints(maxWidth: 190),
@@ -99,7 +101,7 @@ class _ConceptNode extends StatelessWidget {
           borderRadius: BorderRadius.circular(node.isPrereq ? 20 : 10),
           border: Border.all(
             color: selected ? Colors.white : style.border,
-            width: selected ? 2.4 : 1.4,
+            width: 1.8,
           ),
           boxShadow: selected
               ? [

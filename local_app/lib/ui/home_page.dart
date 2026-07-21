@@ -104,10 +104,13 @@ class _HomePageState extends ConsumerState<HomePage> {
                       Positioned.fill(
                         child: ThoughtMapView(graph: graph),
                       ),
+                      // 우상단에 둔다. 그래프는 위에서 아래로 뻗으며 가운데
+                      // 정렬되므로, 좌하단에 두면 노드 상세가 열려 캔버스가
+                      // 낮아졌을 때 노드를 덮는다.
                       if (!graph.isEmpty)
                         const Positioned(
-                          left: 16,
-                          bottom: 16,
+                          right: 16,
+                          top: 16,
                           child: _Legend(),
                         ),
                     ],
