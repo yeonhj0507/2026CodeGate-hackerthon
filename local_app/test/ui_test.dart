@@ -181,7 +181,7 @@ void main() {
 
     testWidgets('세 섹션으로 나눠 보여준다(명세 §5.3)', (tester) async {
       await tester
-          .pumpWidget(host(const RecommendationPanel(recommendations: recs)));
+          .pumpWidget(host(const RecommendationPanel(recommendations: recs, graph: Graph.empty)));
       await tester.pumpAndSettle();
 
       expect(find.text('모를 것 같은 개념'), findsOneWidget);
@@ -203,7 +203,7 @@ void main() {
         ],
       );
       await tester
-          .pumpWidget(host(const RecommendationPanel(recommendations: onlyGap)));
+          .pumpWidget(host(const RecommendationPanel(recommendations: onlyGap, graph: Graph.empty)));
       await tester.pumpAndSettle();
 
       expect(find.textContaining('아직 확장 추천이 없어요'), findsOneWidget);
@@ -216,7 +216,7 @@ void main() {
       await tester.pumpWidget(UncontrolledProviderScope(
         container: container,
         child: const MaterialApp(
-          home: Scaffold(body: RecommendationPanel(recommendations: recs)),
+          home: Scaffold(body: RecommendationPanel(recommendations: recs, graph: Graph.empty)),
         ),
       ));
       await tester.pumpAndSettle();
@@ -234,7 +234,7 @@ void main() {
       await tester.pumpWidget(UncontrolledProviderScope(
         container: container,
         child: const MaterialApp(
-          home: Scaffold(body: RecommendationPanel(recommendations: recs)),
+          home: Scaffold(body: RecommendationPanel(recommendations: recs, graph: Graph.empty)),
         ),
       ));
       await tester.pumpAndSettle();
@@ -247,7 +247,7 @@ void main() {
 
     testWidgets('추천이 없으면 안내 문구를 보여준다', (tester) async {
       await tester.pumpWidget(
-          host(const RecommendationPanel(recommendations: Recommendations.empty)));
+          host(const RecommendationPanel(recommendations: Recommendations.empty, graph: Graph.empty)));
       await tester.pumpAndSettle();
 
       expect(find.textContaining('동기화하면 여기에'), findsOneWidget);

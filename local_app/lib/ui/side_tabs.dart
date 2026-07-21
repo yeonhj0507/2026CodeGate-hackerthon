@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/dto/graph.dart';
 import '../data/dto/recommendation.dart';
-import 'concept_detail_view.dart';
 import 'explore_panel.dart';
 import 'library_panel.dart';
 import 'recommendation_panel.dart';
@@ -14,6 +13,10 @@ import 'recommendation_panel.dart';
 ///   추천  — 서버가 골라 준 것을 본다 (모를 법한 개념 · 확장 · 기사)
 ///   탐색  — 내가 고른 키워드를 묶어 물어본다
 ///   보관함 — 지금까지 읽은 것을 되짚는다 (로컬 전용)
+///
+/// 추천 탭의 목록↔상세 전환은 [RecommendationPanel]이 스스로 한다
+/// (`inlineConceptDetailProvider`). 여기서 화면을 갈아 끼우면 상세를 여는 순간
+/// 탭 전체가 바뀌어 버려, 패널이 다른 탭으로 넘어간 것처럼 보인다.
 class SideTabs extends ConsumerStatefulWidget {
   const SideTabs({
     super.key,
@@ -32,9 +35,6 @@ class _SideTabsState extends ConsumerState<SideTabs>
     with SingleTickerProviderStateMixin {
   late final TabController _tabs = TabController(length: 3, vsync: this);
 
-  /// 추천 탭에서 상세를 열어 둔 개념. null 이면 목록을 보여준다.
-  String? _openedConceptId;
-
   @override
   void dispose() {
     _tabs.dispose();
@@ -44,8 +44,6 @@ class _SideTabsState extends ConsumerState<SideTabs>
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final opened =
-        _openedConceptId == null ? null : widget.graph.nodeById(_openedConceptId!);
 
     return Column(
       children: [
@@ -63,18 +61,10 @@ class _SideTabsState extends ConsumerState<SideTabs>
           child: TabBarView(
             controller: _tabs,
             children: [
-              // 추천 — 목록과 상세를 한 탭 안에서 오간다.
-              opened != null
-                  ? ConceptDetailView(
-                      node: opened,
-                      graph: widget.graph,
-                      onBack: () => setState(() => _openedConceptId = null),
-                    )
-                  : RecommendationPanel(
-                      recommendations: widget.recommendations,
-                      onOpenConcept: (id) =>
-                          setState(() => _openedConceptId = id),
-                    ),
+              RecommendationPanel(
+                recommendations: widget.recommendations,
+                graph: widget.graph,
+              ),
               ExplorePanel(graph: widget.graph),
               const LibraryPanel(),
             ],

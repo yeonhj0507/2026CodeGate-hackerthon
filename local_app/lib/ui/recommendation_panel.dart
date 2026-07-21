@@ -2,209 +2,192 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../data/dto/graph.dart';
 import '../data/dto/recommendation.dart';
 import '../providers/providers.dart';
+import 'app_colors.dart';
+import 'widgets/panel_header.dart';
 
 /// 추천 열람(명세 §5.3).
 ///
-/// 서버가 그래프와 함께 돌려준 세 종류를 그대로 세 섹션으로 나눠 보여준다
-/// — 결핍 보완 / 심화(확장) / 기사. 기사 추천 소스는 신문사 제휴 자체
-/// 데이터셋(명세 §4.4 확정)이므로 외부 브라우저로 연다.
+/// 서버가 그래프와 함께 돌려준 **세 종류**를 그대로 세 섹션으로 나눈다
+/// — 결핍 보완 / 확장(심화) / 기사. 기사 추천 소스는 신문사 제휴 자체
+/// 데이터셋(명세 §4.4 확정)이라 외부 브라우저로 연다.
+///
+/// 개념을 누르면 이 탭을 벗어나지 않고 **인라인으로** 상세를 편다
+/// ([inlineConceptDetailProvider]). 패널이 다른 탭으로 넘어가면 안 되기 때문에
+/// 그래프 선택([selectedNodeIdProvider])과는 별개의 상태로 다룬다. 다만 지도가
+/// 그 개념을 함께 짚어 주는 편이 읽기 좋으므로 선택도 같이 옮긴다.
 class RecommendationPanel extends ConsumerWidget {
   const RecommendationPanel({
     super.key,
     required this.recommendations,
-    this.onOpenConcept,
+    required this.graph,
+    this.onClose,
   });
 
   final Recommendations recommendations;
 
-  /// 개념 카드를 눌렀을 때 상세 뷰를 열 콜백. null 이면 그래프 선택만 한다.
-  final void Function(String conceptId)? onOpenConcept;
+  /// 인라인 상세가 연관 개념·OX 를 뽑아 쓸 원본.
+  final Graph graph;
+
+  /// 도킹 패널에서 닫기(X)를 눌렀을 때. null 이면 헤더를 그리지 않는다.
+  final VoidCallback? onClose;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final scheme = Theme.of(context).colorScheme;
+    final detailId = ref.watch(inlineConceptDetailProvider);
+    final detailNode = detailId == null ? null : graph.nodeById(detailId);
 
-    if (recommendations.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Text(
-            '동기화하면 여기에\n추천 개념과 기사가 나타납니다.',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: scheme.outline, height: 1.6, fontSize: 13),
-          ),
-        ),
+    if (detailNode != null) {
+      return _ConceptDetailView(
+        node: detailNode,
+        graph: graph,
+        reason: _reasonFor(detailNode.id),
       );
     }
 
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (recommendations.gapConcepts.isNotEmpty) ...[
-          const _Header(
-            icon: Icons.lightbulb_outline,
-            title: '모를 것 같은 개념',
-            subtitle: '스스로 찾아보면 좋을 개념이에요',
-          ),
-          const SizedBox(height: 10),
-          for (final c in recommendations.gapConcepts)
-            _ConceptCard(recommendation: c, onOpen: onOpenConcept),
+        if (onClose != null) ...[
+          PanelHeader(title: '추천', onClose: onClose!),
+          const SizedBox(height: 14),
         ],
-        // 확장 추천은 콜드스타트에 비는 게 정상이라(명세 §4.4 한계) 섹션을
-        // 숨기는 대신 안내를 띄운다 — 없어진 게 아니라 아직 이르다는 뜻.
-        const SizedBox(height: 24),
-        const _Header(
-          icon: Icons.trending_up,
-          title: '확장 개념',
-          subtitle: '이해한 개념에서 한 걸음 더',
+        Expanded(
+          child: recommendations.isEmpty
+              ? const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Text(
+                      '동기화하면 여기에\n추천 개념과 기사가 나타납니다.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                          color: AppColors.textMuted, height: 1.6, fontSize: 13),
+                    ),
+                  ),
+                )
+              : ListView(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+                  children: [
+                    if (recommendations.gapConcepts.isNotEmpty) ...[
+                      const _SectionTitle('모를 것 같은 개념'),
+                      const SizedBox(height: 10),
+                      for (final c in recommendations.gapConcepts)
+                        _ConceptCard(recommendation: c),
+                    ],
+                    // 확장 추천은 콜드스타트에 비는 게 정상이라(명세 §4.4 한계)
+                    // 섹션을 숨기는 대신 안내를 띄운다 — 없어진 게 아니라 아직
+                    // 이르다는 뜻이다.
+                    const SizedBox(height: 22),
+                    const _SectionTitle('확장 개념'),
+                    const SizedBox(height: 10),
+                    if (recommendations.expansionConcepts.isEmpty)
+                      const _EmptyHint(
+                        text: '아직 확장 추천이 없어요.\n'
+                            '개념을 이해완료하면 여기에서 다음 단계를 알려드릴게요.',
+                      )
+                    else
+                      for (final e in recommendations.expansionConcepts)
+                        _ExpansionCard(recommendation: e),
+                    if (recommendations.articles.isNotEmpty) ...[
+                      const SizedBox(height: 22),
+                      const _SectionTitle('읽을 만한 기사'),
+                      const SizedBox(height: 10),
+                      for (final a in recommendations.articles)
+                        _ArticleCard(recommendation: a),
+                    ],
+                  ],
+                ),
         ),
-        const SizedBox(height: 10),
-        if (recommendations.expansionConcepts.isEmpty)
-          const _EmptyHint(
-            text: '아직 확장 추천이 없어요.\n'
-                '개념을 이해완료하면 여기에서 다음 단계를 알려드릴게요.',
-          )
-        else
-          for (final e in recommendations.expansionConcepts)
-            _ExpansionCard(recommendation: e, onOpen: onOpenConcept),
-        if (recommendations.articles.isNotEmpty) ...[
-          const SizedBox(height: 24),
-          const _Header(
-            icon: Icons.menu_book_outlined,
-            title: '읽을 만한 기사',
-            subtitle: '평소 읽는 주제를 반영했어요',
-          ),
-          const SizedBox(height: 10),
-          for (final a in recommendations.articles)
-            _ArticleCard(recommendation: a),
-        ],
       ],
     );
   }
+
+  String? _reasonFor(String conceptId) {
+    for (final c in recommendations.gapConcepts) {
+      if (c.conceptId == conceptId) return c.reason;
+    }
+    return null;
+  }
+}
+
+/// 개념 카드를 눌렀을 때 공통 동작 — 지도에서 그 자리를 짚고, 상세를 편다.
+void _openConcept(WidgetRef ref, String? nodeId) {
+  if (nodeId == null || nodeId.isEmpty) return;
+  ref.read(selectedNodeIdProvider.notifier).state = nodeId;
+  ref.read(inlineConceptDetailProvider.notifier).state = nodeId;
 }
 
 class _ConceptCard extends ConsumerWidget {
-  const _ConceptCard({required this.recommendation, this.onOpen});
+  const _ConceptCard({required this.recommendation});
 
   final ConceptRecommendation recommendation;
-  final void Function(String conceptId)? onOpen;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final scheme = Theme.of(context).colorScheme;
-    final nodeId =
-        recommendation.conceptId.isEmpty ? null : recommendation.conceptId;
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      color: const Color(0xFF1D2130),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        // 추천을 유발한 노드가 있으면 그래프에서 그 자리를 짚어준다.
-        onTap: nodeId == null
-            ? null
-            : () {
-                ref.read(selectedNodeIdProvider.notifier).state = nodeId;
-                onOpen?.call(nodeId);
-              },
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                recommendation.conceptTag,
-                style: const TextStyle(
-                    fontSize: 14, fontWeight: FontWeight.w600),
-              ),
-              if (recommendation.reason != null) ...[
-                const SizedBox(height: 6),
-                Text(
-                  recommendation.reason!,
-                  style: TextStyle(
-                      fontSize: 12, color: scheme.outline, height: 1.5),
-                ),
-              ],
-            ],
+    return _CardShell(
+      onTap: () => _openConcept(ref, recommendation.conceptId),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            recommendation.conceptTag,
+            style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textPrimary),
           ),
-        ),
+          if (recommendation.reason != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              recommendation.reason!,
+              style: const TextStyle(
+                  fontSize: 12, color: AppColors.textMuted, height: 1.5),
+            ),
+          ],
+        ],
       ),
     );
   }
 }
 
-/// 확장 개념 카드. 탭하면 그래프에서 해당 노드를 짚어준다.
+/// 확장 개념 카드. 이해한 개념을 발판 삼은 다음 걸음이다.
 class _ExpansionCard extends ConsumerWidget {
-  const _ExpansionCard({required this.recommendation, this.onOpen});
+  const _ExpansionCard({required this.recommendation});
 
   final ExpansionRecommendation recommendation;
-  final void Function(String conceptId)? onOpen;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final scheme = Theme.of(context).colorScheme;
-    final nodeId =
-        recommendation.conceptId.isEmpty ? null : recommendation.conceptId;
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      color: const Color(0xFF1D2130),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: nodeId == null
-            ? null
-            : () {
-                ref.read(selectedNodeIdProvider.notifier).state = nodeId;
-                onOpen?.call(nodeId);
-              },
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+    return _CardShell(
+      onTap: () => _openConcept(ref, recommendation.conceptId),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      recommendation.conceptTag,
-                      style: const TextStyle(
-                          fontSize: 14, fontWeight: FontWeight.w600),
-                    ),
-                  ),
-                  if (recommendation.reason == ExpansionReason.retry)
-                    Icon(Icons.replay, size: 15, color: scheme.primary),
-                ],
+              Expanded(
+                child: Text(
+                  recommendation.conceptTag,
+                  style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textPrimary),
+                ),
               ),
-              const SizedBox(height: 6),
-              // 서버는 신호 종류만 주고 문구는 앱이 만든다(계약 §4).
-              Text(
-                recommendation.reason.label,
-                style: TextStyle(
-                    fontSize: 12, color: scheme.outline, height: 1.5),
-              ),
+              if (recommendation.reason == ExpansionReason.retry)
+                const Icon(Icons.replay, size: 15, color: AppColors.pink),
             ],
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _EmptyHint extends StatelessWidget {
-  const _EmptyHint({required this.text});
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-      child: Text(
-        text,
-        style: TextStyle(fontSize: 12, color: scheme.outline, height: 1.6),
+          const SizedBox(height: 6),
+          // 서버는 신호 종류만 주고 문구는 앱이 만든다(계약 §4).
+          Text(
+            recommendation.reason.label,
+            style: const TextStyle(
+                fontSize: 12, color: AppColors.textMuted, height: 1.5),
+          ),
+        ],
       ),
     );
   }
@@ -228,82 +211,318 @@ class _ArticleCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      color: const Color(0xFF1D2130),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: () => _open(context),
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Column(
+    return _CardShell(
+      onTap: () => _open(context),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Text(
-                      recommendation.title,
-                      style: const TextStyle(
-                          fontSize: 14, fontWeight: FontWeight.w600),
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Icon(Icons.open_in_new, size: 15, color: scheme.outline),
-                ],
+              Expanded(
+                child: Text(
+                  recommendation.title,
+                  style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textPrimary),
+                ),
               ),
-              const SizedBox(height: 6),
-              Text(
-                [
-                  if (recommendation.publisher != null)
-                    recommendation.publisher!,
-                  if (recommendation.reason != null) recommendation.reason!,
-                ].join(' · '),
-                style: TextStyle(
-                    fontSize: 12, color: scheme.outline, height: 1.5),
-              ),
+              const SizedBox(width: 6),
+              const Icon(Icons.open_in_new,
+                  size: 15, color: AppColors.textMuted),
             ],
           ),
+          const SizedBox(height: 6),
+          Text(
+            [
+              if (recommendation.publisher != null) recommendation.publisher!,
+              if (recommendation.reason != null) recommendation.reason!,
+            ].join(' · '),
+            style: const TextStyle(
+                fontSize: 12, color: AppColors.textMuted, height: 1.5),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 추천 탭의 카드 한 장. 라이트 팔레트에서는 그림자 대신 옅은 테두리로 나눈다.
+class _CardShell extends StatelessWidget {
+  const _CardShell({required this.child, this.onTap});
+
+  final Widget child;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: AppColors.panelBg,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: onTap,
+          child: Padding(padding: const EdgeInsets.all(14), child: child),
         ),
       ),
     );
   }
 }
 
-class _Header extends StatelessWidget {
-  const _Header({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-  });
+class _SectionTitle extends StatelessWidget {
+  const _SectionTitle(this.text);
 
-  final IconData icon;
-  final String title;
-  final String subtitle;
+  final String text;
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(icon, size: 18, color: scheme.primary),
-        const SizedBox(width: 8),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title,
-                style: const TextStyle(
-                    fontSize: 14, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 2),
-            Text(subtitle,
-                style: TextStyle(fontSize: 11.5, color: scheme.outline)),
+    return Text(text,
+        style: const TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            color: AppColors.textPrimary));
+  }
+}
+
+class _EmptyHint extends StatelessWidget {
+  const _EmptyHint({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+      child: Text(
+        text,
+        style: const TextStyle(
+            fontSize: 12, color: AppColors.textMuted, height: 1.6),
+      ),
+    );
+  }
+}
+
+/// 개념 하나를 펼친 화면 — 개념명 · 설명 · O/X · 연관 개념.
+///
+/// 추천 탭 안에서 열리고 닫힌다(별도 화면으로 나가지 않는다).
+class _ConceptDetailView extends ConsumerWidget {
+  const _ConceptDetailView({
+    required this.node,
+    required this.graph,
+    required this.reason,
+  });
+
+  final GraphNode node;
+  final Graph graph;
+
+  /// 이 개념이 추천된 이유. `summaryMeta` 가 아직 없을 때의 대체 설명이다.
+  final String? reason;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    // 방향을 가리지 않고 이어진 개념을 모은다 — 상세에서는 선행/후행 구분보다
+    // "이 개념 주변에 무엇이 있나"가 먼저다.
+    final related = graph.edges
+        .where((e) => e.from == node.id || e.to == node.id)
+        .map((e) =>
+            e.from == node.id ? graph.nodeById(e.to) : graph.nodeById(e.from))
+        .whereType<GraphNode>()
+        .toSet()
+        .toList();
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          InkWell(
+            onTap: () =>
+                ref.read(inlineConceptDetailProvider.notifier).state = null,
+            child: const Row(
+              children: [
+                Icon(Icons.arrow_back, size: 16, color: AppColors.textMuted),
+                SizedBox(width: 6),
+                Text('추천으로 돌아가기',
+                    style:
+                        TextStyle(fontSize: 11.5, color: AppColors.textMuted)),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            node.concept,
+            style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: AppColors.textPrimary),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            node.summaryMeta ?? reason ?? '아직 이 개념에 대한 설명이 준비되지 않았어요.',
+            style: const TextStyle(
+                fontSize: 12.5, height: 1.6, color: AppColors.textPrimary),
+          ),
+          if (node.oxQuiz != null) ...[
+            const SizedBox(height: 18),
+            _OxQuizCard(quiz: node.oxQuiz!),
           ],
+          if (related.isNotEmpty) ...[
+            const SizedBox(height: 18),
+            const Text('연관 개념',
+                style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textMuted)),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final n in related)
+                  ActionChip(
+                    backgroundColor: Colors.white,
+                    side: const BorderSide(color: AppColors.border),
+                    label: Text(n.concept,
+                        style: const TextStyle(
+                            fontSize: 12, color: AppColors.textPrimary)),
+                    onPressed: () => _openConcept(ref, n.id),
+                  ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// O/X 한 문항. 채점은 로컬에서만 한다 — 서버는 이 답을 알 필요가 없다.
+///
+/// 문항은 서버가 사용자의 **실제 오답 선지**를 그대로 진술문으로 만들어 준 것이라
+/// (LLM 호출 없음, server `merge.py:_attach_ox_quiz`), 여기서 다시 풀어 보는 것이
+/// 곧 오답 복기다. 그래서 해설이 따로 없다 — 진술문 자체가 자기가 틀렸던 문장이다.
+class _OxQuizCard extends StatefulWidget {
+  const _OxQuizCard({required this.quiz});
+
+  final OxQuiz quiz;
+
+  @override
+  State<_OxQuizCard> createState() => _OxQuizCardState();
+}
+
+class _OxQuizCardState extends State<_OxQuizCard> {
+  bool? _picked;
+
+  @override
+  void didUpdateWidget(_OxQuizCard old) {
+    super.didUpdateWidget(old);
+    // 다른 개념으로 넘어가면 O/X 를 처음 상태로 되돌린다.
+    if (old.quiz.statement != widget.quiz.statement) _picked = null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final picked = _picked;
+    final answered = picked != null;
+    final correct = answered && picked == widget.quiz.answer;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.panelBg,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('OX 퀴즈',
+              style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textMuted)),
+          const SizedBox(height: 6),
+          Text(
+            widget.quiz.statement,
+            style: const TextStyle(
+                fontSize: 13, height: 1.5, color: AppColors.textPrimary),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              _OxButton(
+                label: 'O',
+                selected: picked == true,
+                onTap: answered ? null : () => setState(() => _picked = true),
+              ),
+              const SizedBox(width: 8),
+              _OxButton(
+                label: 'X',
+                selected: picked == false,
+                onTap: answered ? null : () => setState(() => _picked = false),
+              ),
+            ],
+          ),
+          if (answered) ...[
+            const SizedBox(height: 10),
+            Text(
+              correct
+                  ? '정답이에요. 정답은 ${widget.quiz.answer ? 'O' : 'X'} 입니다.'
+                  : '아쉬워요. 정답은 ${widget.quiz.answer ? 'O' : 'X'} 입니다.',
+              style: TextStyle(
+                fontSize: 11.5,
+                height: 1.5,
+                fontWeight: FontWeight.w600,
+                color: correct ? AppColors.textPrimary : AppColors.pink,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _OxButton extends StatelessWidget {
+  const _OxButton({required this.label, required this.selected, this.onTap});
+
+  final String label;
+  final bool selected;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: selected ? AppColors.pinkBgSoft : Colors.white,
+            borderRadius: BorderRadius.circular(8),
+            border:
+                Border.all(color: selected ? AppColors.pink : AppColors.border),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.bold,
+              color: selected ? AppColors.pink : AppColors.textMuted,
+            ),
+          ),
         ),
-      ],
+      ),
     );
   }
 }
