@@ -37,6 +37,13 @@ class LlmProvider(Protocol):
         """미이해 개념 → 보충설명(재요약) 매핑. 명세 §4.4의 "개인화 요약 흡수"."""
         ...
 
+    async def explain_concepts(self, concepts: list[str]) -> str:
+        """탐색 탭 — 고른 키워드 2~3개를 **묶어서** 2~3문장으로 설명한다.
+
+        개별 정의의 나열이 아니라 개념들이 서로 어떻게 얽히는지를 말해야 의미가 있다.
+        """
+        ...
+
 
 def get_llm_provider() -> LlmProvider:
     settings = get_settings()

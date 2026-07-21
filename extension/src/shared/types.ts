@@ -56,6 +56,13 @@ export interface ScrapResult {
   parentConcept: string | null  // main 문항이면 null, 재질문이면 부모 개념명
   level: 0 | 1 | 2             // 0=main, 1=1단계 재질문, 2=2단계 재질문
   correct: boolean
+
+  // ─── OX 퀴즈 재료 (로컬앱 추천 탭 개념 상세) ───────────────────────────────
+  // 서버는 퀴즈를 저장하지 않으므로(stateless) 여기서 실어 보내지 않으면 만들 수 없다.
+  // 서버는 오답 선지를 그대로 O/X 진술문으로 쓴다(정답은 X).
+  question?: string
+  selectedOption?: string   // 사용자가 실제로 고른 보기
+  correctOption?: string    // 정답 보기
 }
 
 // ─── API 페이로드 ────────────────────────────────────────────────────────────

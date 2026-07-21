@@ -22,6 +22,7 @@ from app.domain.schemas import (
     Recommendations,
     UserContext,
 )
+from app.domain.search.base import SearchProvider, get_search_provider
 from app.domain.thoughtmap.merge import normalize_concept
 
 MAX_CONCEPTS = 8
@@ -136,8 +137,14 @@ async def recommend_articles(
     db: AsyncSession,
     concepts: list[str],
     context: UserContext,
+    search: SearchProvider | None = None,
+    limit: int = MAX_ARTICLES,
 ) -> list[ArticleRecommendation]:
-    """읽을 만한 기사 — 결핍 보완 + 확장 개념 모두를 근거로 랭킹한다(명세 §4.4)."""
+    """읽을 만한 기사 — 결핍 보완 + 확장 개념 모두를 근거로 랭킹한다(명세 §4.4).
+
+    제휴 데이터셋을 먼저 채우고, 모자란 자리만 웹 검색으로 보충한다.
+    탐색 탭은 같은 로직을 `limit=2` 로 재사용한다.
+    """
     rows = (await db.execute(select(PartnerArticle))).scalars().all()
     if not rows:
         return []
@@ -164,20 +171,47 @@ async def recommend_articles(
             scored.append((score, matched, row))
 
     scored.sort(key=lambda t: (-t[0], t[2].title))
-    return [
+    partner = [
         ArticleRecommendation(
             title=row.title,
             url=row.url,
             publisher=row.publisher or "",
             summary=row.summary or "",
             matchedConcepts=matched,
+            source="partner",
         )
-        for _, matched, row in scored[:MAX_ARTICLES]
+        for _, matched, row in scored[:limit]
     ]
+
+    # 제휴 데이터셋이 먼저다(명세 §4.4). 모자란 자리만 웹 검색으로 메운다.
+    shortfall = limit - len(partner)
+    if shortfall <= 0 or not concepts:
+        return partner
+
+    taken = {a.url for a in partner}
+    found = await (search or get_search_provider()).search_articles(concepts, shortfall)
+    for item in found:
+        if item.url in taken:
+            continue
+        taken.add(item.url)
+        partner.append(
+            ArticleRecommendation(
+                title=item.title,
+                url=item.url,
+                publisher=item.publisher,
+                summary=item.summary,
+                matchedConcepts=concepts[:1],
+                source="search",
+            )
+        )
+    return partner[:limit]
 
 
 async def build_recommendations(
-    db: AsyncSession, graph: Graph, context: UserContext
+    db: AsyncSession,
+    graph: Graph,
+    context: UserContext,
+    search: SearchProvider | None = None,
 ) -> Recommendations:
     expansion = recommend_expansion_concepts(graph)
 
@@ -187,6 +221,6 @@ async def build_recommendations(
     gap = [c for c in recommend_gap_concepts(graph) if c.conceptId not in expanded_ids]
 
     articles = await recommend_articles(
-        db, [c.conceptTag for c in gap] + [e.conceptTag for e in expansion], context
+        db, [c.conceptTag for c in gap] + [e.conceptTag for e in expansion], context, search
     )
     return Recommendations(gapConcepts=gap, expansionConcepts=expansion, articles=articles)

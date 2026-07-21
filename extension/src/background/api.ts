@@ -31,7 +31,18 @@ async function buildHeaders(): Promise<Record<string, string>> {
 // /auth/logout 은 서버에 없다(JWT 무상태) — 로그아웃은 로컬 토큰 폐기로 처리한다.
 // VITE_MOCK_AUTH=true면 서버 없이 로그인 성공 처리(VITE_MOCK_QUIZ/SCRAP와 짝, 무서버 e2e).
 
-const MOCK_AUTH = import.meta.env.VITE_MOCK_AUTH === 'true'
+/**
+ * Vite 가 주입하는 플래그를 안전하게 읽는다.
+ *
+ * qa/*.ts 는 rolldown 으로 번들해 Node 에서 돌리는데, 그쪽엔 import.meta.env 자체가
+ * 없어 최상위에서 바로 접근하면 모듈 로드가 터진다(qa:scrap 이 그렇게 깨져 있었다).
+ */
+function viteFlag(name: string): boolean {
+  const env = (import.meta as { env?: Record<string, string | undefined> }).env
+  return env?.[name] === 'true'
+}
+
+const MOCK_AUTH = viteFlag('VITE_MOCK_AUTH')
 const MOCK_TOKEN = 'mock-access-token'
 
 async function setSession(token: string, email: string): Promise<void> {
@@ -124,7 +135,7 @@ export async function getAuthStatus(): Promise<{ loggedIn: boolean; userId?: str
  * VITE_MOCK_QUIZ=true면 fetch 대신 body에서 뽑은 canned Quiz[] 반환(§T3.4).
  */
 export async function sendQuizRequest(title: string, body: string): Promise<Quiz[]> {
-  if (import.meta.env.VITE_MOCK_QUIZ === 'true') {
+  if (viteFlag('VITE_MOCK_QUIZ')) {
     return buildMockQuizzes(body)
   }
 
@@ -231,7 +242,7 @@ export async function drainRetryQueue(): Promise<void> {
 export async function sendScrapRequest(payload: ScrapRequest): Promise<void> {
   if (payload.results.length === 0) return
 
-  if (import.meta.env.VITE_MOCK_SCRAP === 'true') return
+  if (viteFlag('VITE_MOCK_SCRAP')) return
 
   try {
     await postScrap(payload)

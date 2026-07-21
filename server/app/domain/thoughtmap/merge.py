@@ -18,6 +18,7 @@ from app.domain.schemas import (
     Graph,
     GraphEdge,
     GraphNode,
+    OxQuiz,
     SourceArticle,
 )
 
@@ -85,6 +86,7 @@ def merge(graph: Graph, scraps: list[ScrapInput]) -> Graph:
 
             node = _ensure_node(nodes, key, concept)
             _touch_source(node, scrap.article_url, scrap.article_title)
+            _attach_ox_quiz(node, raw)
 
             # 말단 노드 = 선행 개념어(명세 §5.1). level 0 로 한 번이라도 출제된 개념은
             # 본문 주장이므로 말단이 아니고, 그 판정은 이후 스크랩에도 유지된다.
@@ -125,6 +127,29 @@ def _ensure_node(nodes: dict[str, GraphNode], key: str, concept: str) -> GraphNo
     elif not node.concept:
         node.concept = concept
     return node
+
+
+def _attach_ox_quiz(node: GraphNode, raw: dict) -> None:
+    """진단 결과에서 O/X 한 문항을 기계적으로 만들어 붙인다(LLM 호출 없음).
+
+    사용자가 골랐던 오답 선지를 그대로 진술문으로 쓴다 → 정답은 X.
+    오답 재료가 없으면 정답 선지로 O 문항을 만든다.
+
+    **이미 붙어 있으면 덮어쓰지 않는다.** 동기화할 때마다 상세뷰의 문항이 바뀌면
+    사용자가 "아까 그 문제"를 다시 볼 수 없다. 최초 진단을 보존한다.
+    """
+    if node.oxQuiz is not None:
+        return
+
+    question = (raw.get("question") or "").strip() or None
+    selected = (raw.get("selectedOption") or "").strip()
+    correct_option = (raw.get("correctOption") or "").strip()
+
+    if not bool(raw.get("correct")) and selected:
+        node.oxQuiz = OxQuiz(statement=selected, answer=False, sourceQuestion=question)
+    elif correct_option:
+        node.oxQuiz = OxQuiz(statement=correct_option, answer=True, sourceQuestion=question)
+    # 구버전 익스텐션은 선지를 보내지 않는다 — 그 경우 OX 없이 둔다.
 
 
 def _touch_source(node: GraphNode, url: str, title: str) -> None:

@@ -71,7 +71,20 @@ reset()
 s().startQuestion(QMAIN)
 s().submitAnswer(1) // 정답
 check('main 정답 → IDLE(재질문 스킵)', s().phase === 'IDLE' && s().active === null)
-check('결과 1건 correct/level0/parent null', JSON.stringify(s().results) === JSON.stringify([{ conceptTag: '기준금리', parentConcept: null, level: 0, correct: true }]))
+const only = s().results[0]
+check(
+  '결과 1건 correct/level0/parent null',
+  s().results.length === 1 &&
+    only.conceptTag === '기준금리' &&
+    only.parentConcept === null &&
+    only.level === 0 &&
+    only.correct === true,
+)
+// OX 퀴즈 재료(서버가 개념 상세용 O/X 를 만들 근거)가 함께 실려야 한다.
+check(
+  'OX 재료 기록 — question/selectedOption/correctOption',
+  !!only.question && only.selectedOption === QMAIN.options[1] && only.correctOption === QMAIN.options[QMAIN.answerIndex],
+)
 const drained = s().flushResults()
 check('flush가 누적 반환(1건)', drained.length === 1)
 check('flush 후 버퍼 빔 + 재flush 빈배열', s().results.length === 0 && s().flushResults().length === 0)

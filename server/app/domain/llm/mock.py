@@ -122,3 +122,15 @@ class MockProvider:
                 )
             out[item.concept] = " ".join(parts)
         return out
+
+    async def explain_concepts(self, concepts: list[str]) -> str:
+        if not concepts:
+            return ""
+        head = "、".join(concepts[:-1]) or concepts[0]
+        tail = concepts[-1]
+        joined = f"{head}과(와) {tail}" if len(concepts) > 1 else tail
+        return (
+            f"{joined}은(는) 한 갈래로 이어지는 개념들입니다. "
+            f"{concepts[0]}에서 출발해 조건이 바뀔 때 무엇이 따라 움직이는지를 보면 "
+            f"{tail}까지 자연스럽게 연결됩니다."
+        )

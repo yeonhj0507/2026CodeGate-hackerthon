@@ -1,0 +1,40 @@
+"""기사 검색 프로바이더 경계.
+
+제휴 데이터셋(`partner_articles`)이 **먼저**이고, 거기서 채우지 못한 자리만 웹 검색으로
+메운다(명세 §4.4 확정 소스를 유지하면서 커버리지만 넓히는 절충).
+
+`llm/base.py` 와 같은 패턴 — `SEARCH_PROVIDER` 대신 `LLM_PROVIDER` 를 그대로 따라간다.
+mock 이면 검색도 mock 이라 테스트가 결정론을 유지하고 과금되지 않는다.
+"""
+
+from dataclasses import dataclass
+from typing import Protocol
+
+from app.core.config import get_settings
+
+
+@dataclass
+class FoundArticle:
+    """검색으로 찾은 기사 1건. 제휴 데이터셋 행과 같은 자리에 놓이도록 정규화된 형태."""
+
+    title: str
+    url: str
+    publisher: str = ""
+    summary: str = ""
+
+
+class SearchProvider(Protocol):
+    async def search_articles(self, concepts: list[str], limit: int) -> list[FoundArticle]:
+        """개념어들과 관련된 한국어 기사를 찾는다. 실패 시 빈 목록(추천은 부가 기능이다)."""
+        ...
+
+
+def get_search_provider() -> SearchProvider:
+    if get_settings().llm_provider == "claude":
+        from app.domain.search.claude_search import ClaudeSearchProvider
+
+        return ClaudeSearchProvider()
+
+    from app.domain.search.mock import MockSearchProvider
+
+    return MockSearchProvider()
