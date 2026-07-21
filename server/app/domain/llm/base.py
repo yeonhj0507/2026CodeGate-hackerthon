@@ -20,6 +20,9 @@ class ConceptContext:
 
     concept: str
     is_prereq: bool = False
+    # 진단 결과. True 면 맞힌 개념이라 설명의 방향이 달라진다(확인·확장 톤).
+    # 이 플래그가 없으면 이해완료 개념에도 "몰라서 막혔다"고 쓰게 된다.
+    understood: bool = False
     # 이 개념을 선행으로 두는 상위 개념들(= 이걸 몰라서 막힌 지점).
     parent_concepts: list[str] = field(default_factory=list)
     # 이 개념을 이해하려면 먼저 알아야 하는 더 얕은 개념들.
@@ -34,7 +37,11 @@ class LlmProvider(Protocol):
         ...
 
     async def summarize_concepts(self, items: list[ConceptContext]) -> dict[str, str]:
-        """미이해 개념 → 보충설명(재요약) 매핑. 명세 §4.4의 "개인화 요약 흡수"."""
+        """진단된 개념 → 보충설명(재요약) 매핑. 명세 §4.4의 "개인화 요약 흡수".
+
+        미이해·이해완료를 함께 받는다. 상태는 `ConceptContext.understood` 로 넘어오고
+        설명의 방향(막힌 지점 짚기 / 발판 삼아 넓히기)만 갈린다.
+        """
         ...
 
     async def explain_concepts(self, concepts: list[str]) -> str:

@@ -84,10 +84,14 @@ class ClaudeProvider:
                 facts.append("그래프 말단의 선행 개념")
             if item.source_titles:
                 facts.append(f"등장 기사 제목: {', '.join(item.source_titles)}")
-            lines.append(f"- {item.concept}\n  " + ("\n  ".join(facts) or "(추가 정보 없음)"))
+            state = "이해완료" if item.understood else "미이해"
+            lines.append(
+                f"- {item.concept} [{state}]\n  "
+                + ("\n  ".join(facts) or "(추가 정보 없음)")
+            )
 
         user = (
-            "학습자가 아래 개념들을 이해하지 못했다(오답). 각각 보충설명을 작성하라.\n"
+            "아래 개념들에 각각 보충설명을 작성하라. 개념어 뒤 대괄호가 학습자의 진단 결과다.\n"
             "주어진 정보는 개념 관계와 기사 제목뿐이며, 기사 원문은 제공되지 않는다.\n\n"
             + "\n".join(lines)
         )
