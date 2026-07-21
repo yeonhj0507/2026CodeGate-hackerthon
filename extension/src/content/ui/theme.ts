@@ -8,7 +8,20 @@
 
 import { PANEL_WIDTH_PX } from '../../shared/constants'
 
+// 본문은 프리텐다드, "prober" 워드마크만 피그마 지정 폰트(Poppins Bold)를 쓴다.
+// 두 shadow root(Panel/StartPrompt) 각각에 주입해야 폰트가 로드된다 — 호스트
+// 페이지의 CSP가 막으면 조용히 다음 폴백 폰트로 내려간다(치명적이지 않음).
+const FONT_IMPORTS = /* css */ `
+@import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css');
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@700&display=swap');
+`
+
+const FONT_BODY =
+  "'Pretendard', -apple-system, BlinkMacSystemFont, 'Malgun Gothic', Roboto, sans-serif"
+const FONT_WORDMARK = "'Poppins', sans-serif"
+
 export const PANEL_CSS = /* css */ `
+${FONT_IMPORTS}
 :host { all: initial; }
 * { box-sizing: border-box; }
 
@@ -43,8 +56,7 @@ export const PANEL_CSS = /* css */ `
   color: var(--fg);
   border-left: 1px solid var(--line);
   box-shadow: var(--shadow);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Malgun Gothic',
-    Roboto, sans-serif;
+  font-family: ${FONT_BODY};
   font-size: 14px;
   line-height: 1.6;
 }
@@ -59,7 +71,13 @@ export const PANEL_CSS = /* css */ `
   border-bottom: 1px solid var(--line);
   flex: 0 0 auto;
 }
-.brand { display: flex; align-items: center; gap: 8px; font-weight: 700; }
+.brand { display: flex; align-items: center; gap: 8px; }
+.wordmark {
+  font-family: ${FONT_WORDMARK};
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--fg);
+}
 .end-btn {
   border: none; background: none; color: var(--accent); font-weight: 700;
   font-size: 12px; cursor: pointer; padding: 4px 6px; border-radius: 6px;
@@ -205,6 +223,7 @@ export const PANEL_CSS = /* css */ `
 // 패널과 별도의 shadow root 에 주입된다. 익스텐션 아이콘과 가까운 우측 상단에 뜬다.
 
 export const PROMPT_CSS = /* css */ `
+${FONT_IMPORTS}
 :host { all: initial; }
 * { box-sizing: border-box; }
 
@@ -227,8 +246,7 @@ export const PROMPT_CSS = /* css */ `
   background: #fff;
   box-shadow: 0 10px 34px rgba(0, 0, 0, 0.16);
 
-  font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo",
-    "Malgun Gothic", "맑은 고딕", sans-serif;
+  font-family: ${FONT_BODY};
   color: var(--fg);
   animation: prompt-in 220ms ease-out;
 }
@@ -242,7 +260,13 @@ export const PROMPT_CSS = /* css */ `
   .prompt { animation: none; }
 }
 
-.prompt-brand { font-size: 13px; font-weight: 700; color: var(--accent); }
+.prompt-brand { display: flex; align-items: center; gap: 6px; }
+.prompt-brand .wordmark {
+  font-family: ${FONT_WORDMARK};
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--accent);
+}
 
 .prompt-desc {
   margin: 6px 0 0;

@@ -5,6 +5,7 @@
 // =============================================================================
 
 import { useEffect, useState } from 'react'
+import { ProberLogo } from '../content/ui/ProberLogo'
 import type { ChromeMessage } from '../shared/types'
 
 const MOCK_AUTH = import.meta.env.VITE_MOCK_AUTH === 'true'
@@ -207,17 +208,28 @@ function SignedIn({ email, onSignedOut }: { email: string; onSignedOut: () => vo
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ padding: 16, background: '#FBFAF9', minHeight: '100%' }}>
+    <div
+      style={{
+        padding: 16,
+        background: '#FBFAF9',
+        minHeight: '100%',
+        fontFamily:
+          "'Pretendard', -apple-system, BlinkMacSystemFont, 'Malgun Gothic', sans-serif",
+      }}
+    >
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '0 0 12px' }}>
-        <span
+        <ProberLogo size={18} />
+        <h1
           style={{
-            width: 18,
-            height: 18,
-            borderRadius: 6,
-            background: 'linear-gradient(135deg, #FF7A93, #E63B5C)',
+            fontFamily: "'Poppins', sans-serif",
+            fontSize: 16,
+            fontWeight: 700,
+            color: '#E63B5C',
+            margin: 0,
           }}
-        />
-        <h1 style={{ fontSize: 16, fontWeight: 700, color: '#E63B5C', margin: 0 }}>프로버</h1>
+        >
+          prober
+        </h1>
       </div>
       {children}
     </div>

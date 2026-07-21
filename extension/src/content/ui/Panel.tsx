@@ -65,7 +65,7 @@ export function Panel({ onEnd }: Props) {
       <header className="header">
         <div className="brand">
           <ProberLogo size={20} />
-          <span>프로버</span>
+          <span className="wordmark">prober</span>
         </div>
         {!ended && (
           <button type="button" className="end-btn" onClick={handleEnd}>
