@@ -1,0 +1,22 @@
+name: prober
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: prober-db
+    environment:
+      POSTGRES_USER: prober
+      POSTGRES_PASSWORD: prober
+      POSTGRES_DB: prober
+    ports:
+      - "5432:5432"
+    volumes:
+      - prober-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U prober -d prober"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  prober-pgdata:
