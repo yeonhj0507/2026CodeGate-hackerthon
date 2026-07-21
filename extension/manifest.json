@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "프로버 (Prober)",
+  "version": "0.1.0",
+  "description": "기사를 읽다가 놓치기 쉬운 배경지식을 짚어주는 능동적 읽기 도우미",
+  "action": {
+    "default_popup": "src/popup/index.html"
+  },
+  "background": {
+    "service_worker": "src/background/index.ts",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["src/content/index.tsx"],
+      "run_at": "document_idle"
+    }
+  ],
+  "permissions": ["storage"],
+  "host_permissions": ["http://localhost:8000/*"]
+}
