@@ -1,0 +1,205 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import '../data/dto/recommendation.dart';
+import '../providers/providers.dart';
+
+/// 추천 열람(명세 §5.3).
+///
+/// 서버가 그래프와 함께 돌려준 두 종류를 그대로 두 섹션으로 나눠 보여준다.
+/// 기사 추천 소스는 신문사 제휴 자체 데이터셋(명세 §4.4 확정)이므로 외부
+/// 브라우저로 연다.
+class RecommendationPanel extends ConsumerWidget {
+  const RecommendationPanel({super.key, required this.recommendations});
+
+  final Recommendations recommendations;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final scheme = Theme.of(context).colorScheme;
+
+    if (recommendations.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            '동기화하면 여기에\n추천 개념과 기사가 나타납니다.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: scheme.outline, height: 1.6, fontSize: 13),
+          ),
+        ),
+      );
+    }
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+      children: [
+        if (recommendations.concepts.isNotEmpty) ...[
+          const _Header(
+            icon: Icons.lightbulb_outline,
+            title: '모를 것 같은 개념',
+            subtitle: '스스로 찾아보면 좋을 개념이에요',
+          ),
+          const SizedBox(height: 10),
+          for (final c in recommendations.concepts)
+            _ConceptCard(recommendation: c),
+        ],
+        if (recommendations.articles.isNotEmpty) ...[
+          const SizedBox(height: 24),
+          const _Header(
+            icon: Icons.menu_book_outlined,
+            title: '읽을 만한 기사',
+            subtitle: '평소 읽는 주제를 반영했어요',
+          ),
+          const SizedBox(height: 10),
+          for (final a in recommendations.articles)
+            _ArticleCard(recommendation: a),
+        ],
+      ],
+    );
+  }
+}
+
+class _ConceptCard extends ConsumerWidget {
+  const _ConceptCard({required this.recommendation});
+
+  final ConceptRecommendation recommendation;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final scheme = Theme.of(context).colorScheme;
+    final nodeId = recommendation.relatedNodeId;
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      color: const Color(0xFF1D2130),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        // 추천을 유발한 노드가 있으면 그래프에서 그 자리를 짚어준다.
+        onTap: nodeId == null
+            ? null
+            : () => ref.read(selectedNodeIdProvider.notifier).state = nodeId,
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                recommendation.concept,
+                style: const TextStyle(
+                    fontSize: 14, fontWeight: FontWeight.w600),
+              ),
+              if (recommendation.reason != null) ...[
+                const SizedBox(height: 6),
+                Text(
+                  recommendation.reason!,
+                  style: TextStyle(
+                      fontSize: 12, color: scheme.outline, height: 1.5),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ArticleCard extends StatelessWidget {
+  const _ArticleCard({required this.recommendation});
+
+  final ArticleRecommendation recommendation;
+
+  Future<void> _open(BuildContext context) async {
+    final uri = Uri.tryParse(recommendation.url);
+    final ok = uri != null &&
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!ok && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('링크를 열지 못했습니다: ${recommendation.url}')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      color: const Color(0xFF1D2130),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => _open(context),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Text(
+                      recommendation.title,
+                      style: const TextStyle(
+                          fontSize: 14, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Icon(Icons.open_in_new, size: 15, color: scheme.outline),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                [
+                  if (recommendation.publisher != null)
+                    recommendation.publisher!,
+                  if (recommendation.reason != null) recommendation.reason!,
+                ].join(' · '),
+                style: TextStyle(
+                    fontSize: 12, color: scheme.outline, height: 1.5),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _Header extends StatelessWidget {
+  const _Header({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 18, color: scheme.primary),
+        const SizedBox(width: 8),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title,
+                style: const TextStyle(
+                    fontSize: 14, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 2),
+            Text(subtitle,
+                style: TextStyle(fontSize: 11.5, color: scheme.outline)),
+          ],
+        ),
+      ],
+    );
+  }
+}
