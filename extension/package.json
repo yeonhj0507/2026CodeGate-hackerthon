@@ -10,7 +10,8 @@
     "qa:anchor": "rolldown qa/anchor-qa.ts -o qa/dist/anchor-qa.mjs --format esm && node qa/dist/anchor-qa.mjs",
     "qa:extractor": "rolldown qa/extractor-qa.ts -o qa/dist/extractor-qa.mjs --format esm --platform node --external jsdom && node qa/dist/extractor-qa.mjs",
     "qa:scrap": "rolldown qa/scrap-qa.ts -o qa/dist/scrap-qa.mjs --format esm --platform node --transform.define \"import.meta.env:{}\" && node qa/dist/scrap-qa.mjs",
-    "qa:session": "rolldown qa/session-qa.ts -o qa/dist/session-qa.mjs --format esm --platform node && node qa/dist/session-qa.mjs"
+    "qa:session": "rolldown qa/session-qa.ts -o qa/dist/session-qa.mjs --format esm --platform node && node qa/dist/session-qa.mjs",
+    "qa:relations": "rolldown qa/relations-qa.ts -o qa/dist/relations-qa.mjs --format esm --platform node && node qa/dist/relations-qa.mjs"
   },
   "dependencies": {
     "@mozilla/readability": "^0.6.0",

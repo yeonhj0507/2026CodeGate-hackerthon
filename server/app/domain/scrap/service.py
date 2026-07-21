@@ -19,6 +19,8 @@ async def buffer_scrap(db: AsyncSession, user_id: str, payload: ScrapRequest) ->
         article_url=payload.articleUrl,
         article_title=payload.articleTitle,
         results=[r.model_dump() for r in payload.results],
+        # by_alias: from_ 이 아니라 계약 그대로 "from" 으로 적어 둔다.
+        relations=[r.model_dump(by_alias=True) for r in payload.relations],
     )
     db.add(row)
     await _prune(db, user_id)

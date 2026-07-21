@@ -25,6 +25,7 @@ import { createSessionQueue } from './session-bind'
 import { mountPanel, mountStartPrompt, unmountStartPrompt } from './ui/mount'
 import { useSession } from './session'
 import { DETECT_RETRY_DELAYS_MS } from '../shared/constants'
+import { relationsOf } from '../shared/relations'
 import type { ChromeMessage, Quiz } from '../shared/types'
 
 /** 이보다 문단이 적으면 기사로 보지 않고 중단(비기사 페이지에서 /quiz 남발 방지, §T3.2). */
@@ -100,6 +101,8 @@ async function boot(): Promise<BootResult> {
               articleUrl: location.href,
               articleTitle: extract.title,
               results,
+              // 트리가 이미 아는 선행 관계. 사용자가 다 맞혀도 관계는 남아야 한다.
+              relations: relationsOf(quizzes),
             },
           } satisfies ChromeMessage,
         )

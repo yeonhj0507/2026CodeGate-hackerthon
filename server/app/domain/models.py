@@ -38,6 +38,8 @@ class TempScrap(Base):
     article_title: Mapped[str] = mapped_column(String(512))
     # [{conceptTag, parentConcept, level, correct}] — 담당1 §3.6 계약 그대로.
     results: Mapped[list] = mapped_column(JSON_TYPE, default=list)
+    # [{from, to}] — 퀴즈 트리가 품고 있던 선행 관계. 답을 맞혀도 관계는 남는다.
+    relations: Mapped[list] = mapped_column(JSON_TYPE, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
     __table_args__ = (Index("ix_temp_scraps_user_created", "user_id", "created_at"),)

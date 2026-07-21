@@ -52,6 +52,8 @@ class ScrapInput:
     article_url: str
     article_title: str
     results: list[dict] = field(default_factory=list)
+    # [{"from": 선행, "to": 후행}] — 퀴즈 트리가 품고 있던 관계.
+    relations: list[dict] = field(default_factory=list)
 
 
 def merge(graph: Graph, scraps: list[ScrapInput]) -> Graph:
@@ -110,6 +112,34 @@ def merge(graph: Graph, scraps: list[ScrapInput]) -> Graph:
                     edges.setdefault(
                         edge_key, GraphEdge(from_=key, to=parent_key, type=EDGE_PREREQ)
                     )
+
+        # 퀴즈 트리가 들고 있던 선행 관계. **답을 맞혀도 관계는 남는다.**
+        #
+        # 위의 parentConcept 경로는 사용자가 틀려서 재질문으로 내려갔을 때만 엣지를
+        # 만든다. 그것만으로는 다 맞힌 세션에서 개념이 전부 고립되고, 엣지를 훑는
+        # 결핍·확장 추천까지 함께 굶는다. 관계는 출제 시점에 이미 정해져 있으므로
+        # 사용자의 정오답과 무관하게 반영한다.
+        for rel in scrap.relations:
+            prereq = (rel.get("from") or "").strip()
+            follower = (rel.get("to") or "").strip()
+            if not prereq or not follower:
+                continue
+            prereq_key = normalize_concept(prereq)
+            follower_key = normalize_concept(follower)
+            if prereq_key == follower_key:
+                continue
+
+            # 아직 문제로 만나지 않은 선행 개념도 노드로 들여놓는다. 상태는
+            # STATE_UNKNOWN 이라 이해완료/미이해 집계를 흔들지 않고, 오히려
+            # "아직 모르는 영역"으로 결핍 추천의 재료가 된다.
+            for key, label in ((prereq_key, prereq), (follower_key, follower)):
+                node = _ensure_node(nodes, key, label)
+                _touch_source(node, scrap.article_url, scrap.article_title)
+
+            edges.setdefault(
+                (prereq_key, follower_key, EDGE_PREREQ),
+                GraphEdge(from_=prereq_key, to=follower_key, type=EDGE_PREREQ),
+            )
 
         # 세션 결과를 노드 상태에 반영. 최신 스크랩이 이전 상태를 덮는다
         # (오답 → 이후 정답이면 이해완료로 회복).
