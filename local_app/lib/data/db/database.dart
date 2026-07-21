@@ -21,7 +21,17 @@ class AppDatabase extends _$AppDatabase {
       : super(executor ?? driftDatabase(name: 'prober_local'));
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
+
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+        onCreate: (m) => m.createAll(),
+        onUpgrade: (m, from, to) async {
+          // v2: 추천 탭 개념 상세의 O/X 문항 보관 컬럼 추가.
+          // 기존 사용자 기기의 그래프·학습이력은 그대로 두고 컬럼만 붙인다.
+          if (from < 2) await m.addColumn(graphNodes, graphNodes.oxQuizJson);
+        },
+      );
 
   // ── 그래프 읽기 ─────────────────────────────────────────────
 
@@ -54,6 +64,9 @@ class AppDatabase extends _$AppDatabase {
               .map(SourceArticle.fromDynamic),
         ),
         summaryMeta: row.summaryMeta,
+        oxQuiz: row.oxQuizJson == null
+            ? null
+            : OxQuiz.fromJson(jsonDecode(row.oxQuizJson!) as Map<String, dynamic>),
       );
 
   // ── 그래프 쓰기 ─────────────────────────────────────────────
@@ -80,6 +93,9 @@ class AppDatabase extends _$AppDatabase {
                 sourceArticlesJson:
                     Value(jsonEncode(n.sourceArticles.map((a) => a.toJson()).toList())),
                 summaryMeta: Value(n.summaryMeta),
+                oxQuizJson: Value(
+                  n.oxQuiz == null ? null : jsonEncode(n.oxQuiz!.toJson()),
+                ),
                 updatedAt: now,
               )),
         );

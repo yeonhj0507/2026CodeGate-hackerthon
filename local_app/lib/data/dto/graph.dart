@@ -104,6 +104,36 @@ class SourceArticle {
   int get hashCode => Object.hash(url, title);
 }
 
+/// 개념 상세에 붙는 O/X 한 문항(추천 탭).
+///
+/// 서버가 LLM 으로 만드는 게 아니라 **사용자가 실제로 골랐던 오답 선지**를 그대로
+/// 진술문으로 쓴다. 그래서 대개 `answer == false` 다 — 왜 틀렸는지 되짚는 장치.
+class OxQuiz {
+  const OxQuiz({
+    required this.statement,
+    required this.answer,
+    this.sourceQuestion,
+  });
+
+  final String statement;
+  final bool answer;
+
+  /// 이 진술이 나왔던 원래 객관식 문항.
+  final String? sourceQuestion;
+
+  factory OxQuiz.fromJson(Map<String, dynamic> json) => OxQuiz(
+        statement: json['statement'] as String? ?? '',
+        answer: json['answer'] as bool? ?? false,
+        sourceQuestion: json['sourceQuestion'] as String?,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'statement': statement,
+        'answer': answer,
+        'sourceQuestion': sourceQuestion,
+      };
+}
+
 class GraphNode {
   const GraphNode({
     required this.id,
@@ -112,6 +142,7 @@ class GraphNode {
     required this.isPrereq,
     this.sourceArticles = const [],
     this.summaryMeta,
+    this.oxQuiz,
     this.promoted = true,
   });
 
@@ -130,6 +161,9 @@ class GraphNode {
   /// 개인화 요약이 흡수된 자리(명세 §4.4). 미이해 개념의 재요약·보충설명.
   final String? summaryMeta;
 
+  /// 추천 탭 개념 상세에서 풀어 보는 O/X 한 문항. 재료가 없으면 null.
+  final OxQuiz? oxQuiz;
+
   /// 그래프 시각화 노출 여부(명세 §4.4). 확장 후보를 "수락 전 비노출"로 두기 위한 필드.
   ///
   /// 현재 서버의 확장 신호(재도전·형제)는 사용자가 이미 퀴즈로 만난 노드만 고르므로
@@ -144,6 +178,7 @@ class GraphNode {
     String? state,
     List<SourceArticle>? sourceArticles,
     String? summaryMeta,
+    OxQuiz? oxQuiz,
     bool? promoted,
   }) {
     return GraphNode(
@@ -153,6 +188,7 @@ class GraphNode {
       isPrereq: isPrereq,
       sourceArticles: sourceArticles ?? this.sourceArticles,
       summaryMeta: summaryMeta ?? this.summaryMeta,
+      oxQuiz: oxQuiz ?? this.oxQuiz,
       promoted: promoted ?? this.promoted,
     );
   }
@@ -168,6 +204,9 @@ class GraphNode {
               .toList() ??
           const [],
       summaryMeta: json['summaryMeta'] as String?,
+      oxQuiz: json['oxQuiz'] == null
+          ? null
+          : OxQuiz.fromJson(json['oxQuiz'] as Map<String, dynamic>),
       promoted: json['promoted'] as bool? ?? true,
     );
   }
@@ -179,6 +218,7 @@ class GraphNode {
         'isPrereq': isPrereq,
         'sourceArticles': sourceArticles.map((e) => e.toJson()).toList(),
         'summaryMeta': summaryMeta,
+        'oxQuiz': oxQuiz?.toJson(),
         'promoted': promoted,
       };
 }

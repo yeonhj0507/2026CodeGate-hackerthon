@@ -3,6 +3,7 @@ import 'package:dio/dio.dart';
 import '../../core/app_exception.dart';
 import '../../core/config.dart';
 import '../dto/auth.dart';
+import '../dto/explore.dart';
 import '../dto/graph.dart';
 import '../dto/user_context.dart';
 import 'api_client.dart';
@@ -97,5 +98,11 @@ class DioApiClient implements ApiClient {
       'userContext': ctx.toJson(),
     }));
     return ThoughtmapUpdateOut.fromJson(body);
+  }
+
+  @override
+  Future<ExploreResult> explore(ExploreRequest req) async {
+    final body = await _unwrap(_dio.post('/explore', data: req.toJson()));
+    return ExploreResult.fromJson(body);
   }
 }

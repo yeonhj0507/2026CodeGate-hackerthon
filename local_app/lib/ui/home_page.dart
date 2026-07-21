@@ -6,7 +6,7 @@ import '../data/dto/graph.dart';
 import '../providers/providers.dart';
 import 'graph_view.dart';
 import 'node_detail_panel.dart';
-import 'recommendation_panel.dart';
+import 'side_tabs.dart';
 
 /// 홈 — 좌측 생각 지도, 우측 추천 패널.
 class HomePage extends ConsumerStatefulWidget {
@@ -127,7 +127,10 @@ class _HomePageState extends ConsumerState<HomePage> {
           Container(width: 1, color: Theme.of(context).colorScheme.outlineVariant),
           SizedBox(
             width: 340,
-            child: RecommendationPanel(recommendations: sync.recommendations),
+            child: SideTabs(
+              graph: graph,
+              recommendations: sync.recommendations,
+            ),
           ),
         ],
       ),

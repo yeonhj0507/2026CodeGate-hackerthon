@@ -2,6 +2,7 @@ import 'dart:math';
 
 import '../../core/app_exception.dart';
 import '../dto/auth.dart';
+import '../dto/explore.dart';
 import '../dto/graph.dart';
 import '../dto/recommendation.dart';
 import '../dto/user_context.dart';
@@ -165,6 +166,32 @@ class MockApiClient implements ApiClient {
               ))
           .toList(),
       articles: const [],
+    );
+  }
+
+  @override
+  Future<ExploreResult> explore(ExploreRequest req) async {
+    await _delay();
+    final tags = req.conceptTags;
+    if (tags.isEmpty) return ExploreResult.empty;
+
+    // 서버 mock 과 같은 모양 — 개별 정의가 아니라 "묶음" 설명임을 보여준다.
+    final joined = tags.length > 1
+        ? '${tags.take(tags.length - 1).join(', ')}과(와) ${tags.last}'
+        : tags.first;
+    return ExploreResult(
+      explanation: '$joined은(는) 한 갈래로 이어지는 개념들입니다. '
+          '${tags.first}에서 조건이 바뀌면 무엇이 따라 움직이는지를 보면 '
+          '${tags.last}까지 자연스럽게 연결됩니다.',
+      articles: [
+        for (final t in tags.take(2))
+          ArticleRecommendation(
+            title: '$t 쉽게 읽기',
+            url: 'https://example.com/prober/${Uri.encodeComponent(t)}',
+            publisher: '검색결과',
+            reason: '탐색: $t',
+          ),
+      ],
     );
   }
 }

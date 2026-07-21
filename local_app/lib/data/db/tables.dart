@@ -28,6 +28,9 @@ class GraphNodes extends Table {
   /// 개인화 요약이 흡수된 자리(명세 §4.4).
   TextColumn get summaryMeta => text().nullable()();
 
+  /// 추천 탭 개념 상세의 O/X 문항을 JSON 으로 보관. 재료가 없으면 null.
+  TextColumn get oxQuizJson => text().nullable()();
+
   DateTimeColumn get updatedAt => dateTime()();
 
   @override

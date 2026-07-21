@@ -11,9 +11,16 @@ import '../providers/providers.dart';
 /// — 결핍 보완 / 심화(확장) / 기사. 기사 추천 소스는 신문사 제휴 자체
 /// 데이터셋(명세 §4.4 확정)이므로 외부 브라우저로 연다.
 class RecommendationPanel extends ConsumerWidget {
-  const RecommendationPanel({super.key, required this.recommendations});
+  const RecommendationPanel({
+    super.key,
+    required this.recommendations,
+    this.onOpenConcept,
+  });
 
   final Recommendations recommendations;
+
+  /// 개념 카드를 눌렀을 때 상세 뷰를 열 콜백. null 이면 그래프 선택만 한다.
+  final void Function(String conceptId)? onOpenConcept;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -43,7 +50,7 @@ class RecommendationPanel extends ConsumerWidget {
           ),
           const SizedBox(height: 10),
           for (final c in recommendations.gapConcepts)
-            _ConceptCard(recommendation: c),
+            _ConceptCard(recommendation: c, onOpen: onOpenConcept),
         ],
         // 확장 추천은 콜드스타트에 비는 게 정상이라(명세 §4.4 한계) 섹션을
         // 숨기는 대신 안내를 띄운다 — 없어진 게 아니라 아직 이르다는 뜻.
@@ -61,7 +68,7 @@ class RecommendationPanel extends ConsumerWidget {
           )
         else
           for (final e in recommendations.expansionConcepts)
-            _ExpansionCard(recommendation: e),
+            _ExpansionCard(recommendation: e, onOpen: onOpenConcept),
         if (recommendations.articles.isNotEmpty) ...[
           const SizedBox(height: 24),
           const _Header(
@@ -79,9 +86,10 @@ class RecommendationPanel extends ConsumerWidget {
 }
 
 class _ConceptCard extends ConsumerWidget {
-  const _ConceptCard({required this.recommendation});
+  const _ConceptCard({required this.recommendation, this.onOpen});
 
   final ConceptRecommendation recommendation;
+  final void Function(String conceptId)? onOpen;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -97,7 +105,10 @@ class _ConceptCard extends ConsumerWidget {
         // 추천을 유발한 노드가 있으면 그래프에서 그 자리를 짚어준다.
         onTap: nodeId == null
             ? null
-            : () => ref.read(selectedNodeIdProvider.notifier).state = nodeId,
+            : () {
+                ref.read(selectedNodeIdProvider.notifier).state = nodeId;
+                onOpen?.call(nodeId);
+              },
         child: Padding(
           padding: const EdgeInsets.all(14),
           child: Column(
@@ -126,9 +137,10 @@ class _ConceptCard extends ConsumerWidget {
 
 /// 확장 개념 카드. 탭하면 그래프에서 해당 노드를 짚어준다.
 class _ExpansionCard extends ConsumerWidget {
-  const _ExpansionCard({required this.recommendation});
+  const _ExpansionCard({required this.recommendation, this.onOpen});
 
   final ExpansionRecommendation recommendation;
+  final void Function(String conceptId)? onOpen;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -143,7 +155,10 @@ class _ExpansionCard extends ConsumerWidget {
         borderRadius: BorderRadius.circular(12),
         onTap: nodeId == null
             ? null
-            : () => ref.read(selectedNodeIdProvider.notifier).state = nodeId,
+            : () {
+                ref.read(selectedNodeIdProvider.notifier).state = nodeId;
+                onOpen?.call(nodeId);
+              },
         child: Padding(
           padding: const EdgeInsets.all(14),
           child: Column(

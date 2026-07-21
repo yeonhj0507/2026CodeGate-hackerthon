@@ -76,6 +76,17 @@ class $GraphNodesTable extends GraphNodes
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _oxQuizJsonMeta = const VerificationMeta(
+    'oxQuizJson',
+  );
+  @override
+  late final GeneratedColumn<String> oxQuizJson = GeneratedColumn<String>(
+    'ox_quiz_json',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _updatedAtMeta = const VerificationMeta(
     'updatedAt',
   );
@@ -95,6 +106,7 @@ class $GraphNodesTable extends GraphNodes
     isPrereq,
     sourceArticlesJson,
     summaryMeta,
+    oxQuizJson,
     updatedAt,
   ];
   @override
@@ -154,6 +166,15 @@ class $GraphNodesTable extends GraphNodes
         ),
       );
     }
+    if (data.containsKey('ox_quiz_json')) {
+      context.handle(
+        _oxQuizJsonMeta,
+        oxQuizJson.isAcceptableOrUnknown(
+          data['ox_quiz_json']!,
+          _oxQuizJsonMeta,
+        ),
+      );
+    }
     if (data.containsKey('updated_at')) {
       context.handle(
         _updatedAtMeta,
@@ -195,6 +216,10 @@ class $GraphNodesTable extends GraphNodes
         DriftSqlType.string,
         data['${effectivePrefix}summary_meta'],
       ),
+      oxQuizJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}ox_quiz_json'],
+      ),
       updatedAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}updated_at'],
@@ -221,6 +246,9 @@ class GraphNodeRow extends DataClass implements Insertable<GraphNodeRow> {
 
   /// 개인화 요약이 흡수된 자리(명세 §4.4).
   final String? summaryMeta;
+
+  /// 추천 탭 개념 상세의 O/X 문항을 JSON 으로 보관. 재료가 없으면 null.
+  final String? oxQuizJson;
   final DateTime updatedAt;
   const GraphNodeRow({
     required this.id,
@@ -229,6 +257,7 @@ class GraphNodeRow extends DataClass implements Insertable<GraphNodeRow> {
     required this.isPrereq,
     required this.sourceArticlesJson,
     this.summaryMeta,
+    this.oxQuizJson,
     required this.updatedAt,
   });
   @override
@@ -241,6 +270,9 @@ class GraphNodeRow extends DataClass implements Insertable<GraphNodeRow> {
     map['source_articles_json'] = Variable<String>(sourceArticlesJson);
     if (!nullToAbsent || summaryMeta != null) {
       map['summary_meta'] = Variable<String>(summaryMeta);
+    }
+    if (!nullToAbsent || oxQuizJson != null) {
+      map['ox_quiz_json'] = Variable<String>(oxQuizJson);
     }
     map['updated_at'] = Variable<DateTime>(updatedAt);
     return map;
@@ -256,6 +288,9 @@ class GraphNodeRow extends DataClass implements Insertable<GraphNodeRow> {
       summaryMeta: summaryMeta == null && nullToAbsent
           ? const Value.absent()
           : Value(summaryMeta),
+      oxQuizJson: oxQuizJson == null && nullToAbsent
+          ? const Value.absent()
+          : Value(oxQuizJson),
       updatedAt: Value(updatedAt),
     );
   }
@@ -274,6 +309,7 @@ class GraphNodeRow extends DataClass implements Insertable<GraphNodeRow> {
         json['sourceArticlesJson'],
       ),
       summaryMeta: serializer.fromJson<String?>(json['summaryMeta']),
+      oxQuizJson: serializer.fromJson<String?>(json['oxQuizJson']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
   }
@@ -287,6 +323,7 @@ class GraphNodeRow extends DataClass implements Insertable<GraphNodeRow> {
       'isPrereq': serializer.toJson<bool>(isPrereq),
       'sourceArticlesJson': serializer.toJson<String>(sourceArticlesJson),
       'summaryMeta': serializer.toJson<String?>(summaryMeta),
+      'oxQuizJson': serializer.toJson<String?>(oxQuizJson),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
   }
@@ -298,6 +335,7 @@ class GraphNodeRow extends DataClass implements Insertable<GraphNodeRow> {
     bool? isPrereq,
     String? sourceArticlesJson,
     Value<String?> summaryMeta = const Value.absent(),
+    Value<String?> oxQuizJson = const Value.absent(),
     DateTime? updatedAt,
   }) => GraphNodeRow(
     id: id ?? this.id,
@@ -306,6 +344,7 @@ class GraphNodeRow extends DataClass implements Insertable<GraphNodeRow> {
     isPrereq: isPrereq ?? this.isPrereq,
     sourceArticlesJson: sourceArticlesJson ?? this.sourceArticlesJson,
     summaryMeta: summaryMeta.present ? summaryMeta.value : this.summaryMeta,
+    oxQuizJson: oxQuizJson.present ? oxQuizJson.value : this.oxQuizJson,
     updatedAt: updatedAt ?? this.updatedAt,
   );
   GraphNodeRow copyWithCompanion(GraphNodesCompanion data) {
@@ -320,6 +359,9 @@ class GraphNodeRow extends DataClass implements Insertable<GraphNodeRow> {
       summaryMeta: data.summaryMeta.present
           ? data.summaryMeta.value
           : this.summaryMeta,
+      oxQuizJson: data.oxQuizJson.present
+          ? data.oxQuizJson.value
+          : this.oxQuizJson,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
   }
@@ -333,6 +375,7 @@ class GraphNodeRow extends DataClass implements Insertable<GraphNodeRow> {
           ..write('isPrereq: $isPrereq, ')
           ..write('sourceArticlesJson: $sourceArticlesJson, ')
           ..write('summaryMeta: $summaryMeta, ')
+          ..write('oxQuizJson: $oxQuizJson, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
         .toString();
@@ -346,6 +389,7 @@ class GraphNodeRow extends DataClass implements Insertable<GraphNodeRow> {
     isPrereq,
     sourceArticlesJson,
     summaryMeta,
+    oxQuizJson,
     updatedAt,
   );
   @override
@@ -358,6 +402,7 @@ class GraphNodeRow extends DataClass implements Insertable<GraphNodeRow> {
           other.isPrereq == this.isPrereq &&
           other.sourceArticlesJson == this.sourceArticlesJson &&
           other.summaryMeta == this.summaryMeta &&
+          other.oxQuizJson == this.oxQuizJson &&
           other.updatedAt == this.updatedAt);
 }
 
@@ -368,6 +413,7 @@ class GraphNodesCompanion extends UpdateCompanion<GraphNodeRow> {
   final Value<bool> isPrereq;
   final Value<String> sourceArticlesJson;
   final Value<String?> summaryMeta;
+  final Value<String?> oxQuizJson;
   final Value<DateTime> updatedAt;
   final Value<int> rowid;
   const GraphNodesCompanion({
@@ -377,6 +423,7 @@ class GraphNodesCompanion extends UpdateCompanion<GraphNodeRow> {
     this.isPrereq = const Value.absent(),
     this.sourceArticlesJson = const Value.absent(),
     this.summaryMeta = const Value.absent(),
+    this.oxQuizJson = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
@@ -387,6 +434,7 @@ class GraphNodesCompanion extends UpdateCompanion<GraphNodeRow> {
     this.isPrereq = const Value.absent(),
     this.sourceArticlesJson = const Value.absent(),
     this.summaryMeta = const Value.absent(),
+    this.oxQuizJson = const Value.absent(),
     required DateTime updatedAt,
     this.rowid = const Value.absent(),
   }) : id = Value(id),
@@ -400,6 +448,7 @@ class GraphNodesCompanion extends UpdateCompanion<GraphNodeRow> {
     Expression<bool>? isPrereq,
     Expression<String>? sourceArticlesJson,
     Expression<String>? summaryMeta,
+    Expression<String>? oxQuizJson,
     Expression<DateTime>? updatedAt,
     Expression<int>? rowid,
   }) {
@@ -411,6 +460,7 @@ class GraphNodesCompanion extends UpdateCompanion<GraphNodeRow> {
       if (sourceArticlesJson != null)
         'source_articles_json': sourceArticlesJson,
       if (summaryMeta != null) 'summary_meta': summaryMeta,
+      if (oxQuizJson != null) 'ox_quiz_json': oxQuizJson,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (rowid != null) 'rowid': rowid,
     });
@@ -423,6 +473,7 @@ class GraphNodesCompanion extends UpdateCompanion<GraphNodeRow> {
     Value<bool>? isPrereq,
     Value<String>? sourceArticlesJson,
     Value<String?>? summaryMeta,
+    Value<String?>? oxQuizJson,
     Value<DateTime>? updatedAt,
     Value<int>? rowid,
   }) {
@@ -433,6 +484,7 @@ class GraphNodesCompanion extends UpdateCompanion<GraphNodeRow> {
       isPrereq: isPrereq ?? this.isPrereq,
       sourceArticlesJson: sourceArticlesJson ?? this.sourceArticlesJson,
       summaryMeta: summaryMeta ?? this.summaryMeta,
+      oxQuizJson: oxQuizJson ?? this.oxQuizJson,
       updatedAt: updatedAt ?? this.updatedAt,
       rowid: rowid ?? this.rowid,
     );
@@ -459,6 +511,9 @@ class GraphNodesCompanion extends UpdateCompanion<GraphNodeRow> {
     if (summaryMeta.present) {
       map['summary_meta'] = Variable<String>(summaryMeta.value);
     }
+    if (oxQuizJson.present) {
+      map['ox_quiz_json'] = Variable<String>(oxQuizJson.value);
+    }
     if (updatedAt.present) {
       map['updated_at'] = Variable<DateTime>(updatedAt.value);
     }
@@ -477,6 +532,7 @@ class GraphNodesCompanion extends UpdateCompanion<GraphNodeRow> {
           ..write('isPrereq: $isPrereq, ')
           ..write('sourceArticlesJson: $sourceArticlesJson, ')
           ..write('summaryMeta: $summaryMeta, ')
+          ..write('oxQuizJson: $oxQuizJson, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
@@ -1871,6 +1927,7 @@ typedef $$GraphNodesTableCreateCompanionBuilder =
       Value<bool> isPrereq,
       Value<String> sourceArticlesJson,
       Value<String?> summaryMeta,
+      Value<String?> oxQuizJson,
       required DateTime updatedAt,
       Value<int> rowid,
     });
@@ -1882,6 +1939,7 @@ typedef $$GraphNodesTableUpdateCompanionBuilder =
       Value<bool> isPrereq,
       Value<String> sourceArticlesJson,
       Value<String?> summaryMeta,
+      Value<String?> oxQuizJson,
       Value<DateTime> updatedAt,
       Value<int> rowid,
     });
@@ -1922,6 +1980,11 @@ class $$GraphNodesTableFilterComposer
 
   ColumnFilters<String> get summaryMeta => $composableBuilder(
     column: $table.summaryMeta,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get oxQuizJson => $composableBuilder(
+    column: $table.oxQuizJson,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -1970,6 +2033,11 @@ class $$GraphNodesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get oxQuizJson => $composableBuilder(
+    column: $table.oxQuizJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
     column: $table.updatedAt,
     builder: (column) => ColumnOrderings(column),
@@ -2004,6 +2072,11 @@ class $$GraphNodesTableAnnotationComposer
 
   GeneratedColumn<String> get summaryMeta => $composableBuilder(
     column: $table.summaryMeta,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get oxQuizJson => $composableBuilder(
+    column: $table.oxQuizJson,
     builder: (column) => column,
   );
 
@@ -2048,6 +2121,7 @@ class $$GraphNodesTableTableManager
                 Value<bool> isPrereq = const Value.absent(),
                 Value<String> sourceArticlesJson = const Value.absent(),
                 Value<String?> summaryMeta = const Value.absent(),
+                Value<String?> oxQuizJson = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => GraphNodesCompanion(
@@ -2057,6 +2131,7 @@ class $$GraphNodesTableTableManager
                 isPrereq: isPrereq,
                 sourceArticlesJson: sourceArticlesJson,
                 summaryMeta: summaryMeta,
+                oxQuizJson: oxQuizJson,
                 updatedAt: updatedAt,
                 rowid: rowid,
               ),
@@ -2068,6 +2143,7 @@ class $$GraphNodesTableTableManager
                 Value<bool> isPrereq = const Value.absent(),
                 Value<String> sourceArticlesJson = const Value.absent(),
                 Value<String?> summaryMeta = const Value.absent(),
+                Value<String?> oxQuizJson = const Value.absent(),
                 required DateTime updatedAt,
                 Value<int> rowid = const Value.absent(),
               }) => GraphNodesCompanion.insert(
@@ -2077,6 +2153,7 @@ class $$GraphNodesTableTableManager
                 isPrereq: isPrereq,
                 sourceArticlesJson: sourceArticlesJson,
                 summaryMeta: summaryMeta,
+                oxQuizJson: oxQuizJson,
                 updatedAt: updatedAt,
                 rowid: rowid,
               ),
