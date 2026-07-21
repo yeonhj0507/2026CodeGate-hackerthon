@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:prober_local/data/api/mock_api_client.dart';
+import 'package:prober_local/data/api/mock_data.dart';
 import 'package:prober_local/data/db/database.dart';
 import 'package:prober_local/data/dto/graph.dart';
 import 'package:prober_local/data/repository/thoughtmap_repository.dart';
@@ -98,7 +99,7 @@ void main() {
 
   test('서버 버퍼가 비면 그래프는 그대로고 새 노드는 0이다', () async {
     // 준비된 웨이브를 모두 소진한다.
-    for (var i = 0; i < 3; i++) {
+    for (var i = 0; i < MockData.waves.length; i++) {
       await repo.sync();
     }
     final drained = await db.loadGraph();
