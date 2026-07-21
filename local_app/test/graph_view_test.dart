@@ -44,7 +44,7 @@ void main() {
           state: NodeState.understood,
           isPrereq: false),
     ],
-    edges: const [GraphEdge(from: 'n4', to: 'n3', type: EdgeType.prereq)],
+    edges: const [GraphEdge(from: 'n3', to: 'n4', type: EdgeType.prereq)],
   );
 
   // 좌하단 동기화 FAB 가 syncControllerProvider 를 거쳐 실 DB 까지 물고 있다.

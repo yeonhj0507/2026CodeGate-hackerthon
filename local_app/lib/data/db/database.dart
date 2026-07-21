@@ -188,9 +188,11 @@ class AppDatabase extends _$AppDatabase {
   /// 갱신 그래프의 노드 상태에서 이력을 역산해 축적한다.
   Future<void> recordSyncOutcome(Graph graph) async {
     final now = DateTime.now().toUtc();
+    // 엣지는 `from`=후행 → `to`=선행. parentConcept 는 "먼저 알아야 했던 개념"
+    // 이라 후행 노드에 선행을 달아 준다.
     final parentOf = <String, String>{
       for (final e in graph.edges)
-        if (e.type == EdgeType.prereq) e.to: e.from,
+        if (e.type == EdgeType.prereq) e.from: e.to,
     };
 
     await batch((b) {

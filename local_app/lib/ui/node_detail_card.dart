@@ -32,14 +32,16 @@ class NodeDetailCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final style = nodeStyleOf(node);
 
+    // 엣지는 `from`=후행 → `to`=선행이다. 내가 가리키는 쪽이 먼저 알아야 할
+    // 개념이고, 나를 가리키는 쪽이 내가 열어 주는 개념이다.
     final prereqs = graph.edges
-        .where((e) => e.to == node.id && e.type == EdgeType.prereq)
-        .map((e) => graph.nodeById(e.from))
+        .where((e) => e.from == node.id && e.type == EdgeType.prereq)
+        .map((e) => graph.nodeById(e.to))
         .whereType<GraphNode>()
         .toList();
     final unlocks = graph.edges
-        .where((e) => e.from == node.id && e.type == EdgeType.prereq)
-        .map((e) => graph.nodeById(e.to))
+        .where((e) => e.to == node.id && e.type == EdgeType.prereq)
+        .map((e) => graph.nodeById(e.from))
         .whereType<GraphNode>()
         .toList();
     final related = graph.edges

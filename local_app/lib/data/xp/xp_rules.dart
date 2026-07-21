@@ -128,10 +128,13 @@ List<XpEvent> evaluateGraphXp({
   final beforeEdges = {for (final e in before.edges) _edgeKey(e)};
 
   /// 후행 → 선행 목록. 재도전 판정에 쓴다.
+  ///
+  /// 엣지는 `from`=후행 → `to`=선행이다(서버가 방향을 뒤집었다 — 기사에서 만난
+  /// 핵심어가 지도 맨 위에 서고 화살표를 따라 내려가면 선행이 나온다).
   final prereqsOf = <String, List<String>>{};
   for (final e in after.edges) {
     if (e.type != EdgeType.prereq) continue;
-    prereqsOf.putIfAbsent(e.to, () => []).add(e.from);
+    prereqsOf.putIfAbsent(e.from, () => []).add(e.to);
   }
 
   for (final node in after.nodes) {

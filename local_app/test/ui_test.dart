@@ -38,8 +38,9 @@ void main() {
         sourceArticles: [SourceArticle(url: 'https://n.example/a', title: '기사 A')],
       ),
     ],
+    // 엣지는 `from`=후행 → `to`=선행이다(서버가 방향을 뒤집었다).
     edges: [
-      GraphEdge(from: 'c_물가상승률', to: 'c_실질금리'),
+      GraphEdge(from: 'c_실질금리', to: 'c_물가상승률'),
       GraphEdge(from: 'c_실질금리', to: 'c_기준금리', type: EdgeType.related),
     ],
   );

@@ -77,7 +77,9 @@ void main() {
     });
 
     test('선행을 먼저 뚫고 뒤집으면 재도전 성공으로 승격된다', () {
-      const edges = [GraphEdge(from: '물가상승률', to: '실질금리')];
+      // `from`=후행 → `to`=선행. 예전 픽스처는 두 노드가 대칭이라 방향을
+      // 뒤집어도 통과했다 — 아래 dedupeKey 단언으로 누가 받는지까지 못 박는다.
+      const edges = [GraphEdge(from: '실질금리', to: '물가상승률')];
       final events = evaluateGraphXp(
         before: Graph(
           nodes: [
@@ -98,6 +100,11 @@ void main() {
         XpKind.retrySuccess.name,
       });
       expect(events.where((e) => e.dedupeKey == 'understood:실질금리'), hasLength(1));
+      // 재도전 성공은 **후행**(실질금리)이 받는다. 선행은 그냥 전환이다.
+      expect(
+        events.singleWhere((e) => e.kindName == XpKind.retrySuccess.name).dedupeKey,
+        'understood:실질금리',
+      );
     });
 
     test('같은 기사 안의 연결에는 기사 잇기 XP가 없다', () {

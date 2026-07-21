@@ -41,8 +41,9 @@ void main() {
           oxQuiz: quiz,
         ),
       ],
+      // 엣지는 `from`=후행 → `to`=선행이다(서버가 방향을 뒤집었다).
       edges: const [
-        GraphEdge(from: 'prereq', to: 'target', type: EdgeType.prereq),
+        GraphEdge(from: 'target', to: 'prereq', type: EdgeType.prereq),
       ],
     ));
   }
