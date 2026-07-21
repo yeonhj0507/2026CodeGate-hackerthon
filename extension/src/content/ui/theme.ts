@@ -64,12 +64,38 @@ export const PANEL_CSS = /* css */ `
   width: 20px; height: 20px; border-radius: 6px;
   background: linear-gradient(135deg, #FF7A93, #E63B5C);
 }
-.progress { font-size: 12px; color: var(--muted); }
 .end-btn {
   border: none; background: none; color: var(--accent); font-weight: 700;
   font-size: 12px; cursor: pointer; padding: 4px 6px; border-radius: 6px;
 }
 .end-btn:hover { background: var(--accent-weak); color: var(--accent); }
+
+/* ── 진행률 바(정답률) — 헤더와 분리된 별도 줄. 문항 수 상한이 없어도
+   비율만 채우면 되므로 총 문항 수에 무관하게 항상 정확하다. ── */
+.progress-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  flex: 0 0 auto;
+}
+.progress-track {
+  flex: 1 1 auto;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--accent-weak);
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+  transition: width .2s ease-out;
+}
+.progress-label {
+  flex: 0 0 auto;
+  font-size: 11px; font-weight: 600; color: var(--muted);
+}
 
 /* ── 본문 스크롤 영역 ── */
 .body {

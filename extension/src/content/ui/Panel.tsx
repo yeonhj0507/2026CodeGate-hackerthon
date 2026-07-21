@@ -66,17 +66,26 @@ export function Panel({ onEnd }: Props) {
           <span className="dot" />
           <span>프로버</span>
         </div>
-        {!ended && solved > 0 && (
-          <span className="progress">
-            맞힘 {correct} / 푼 문항 {solved}
-          </span>
-        )}
         {!ended && (
           <button type="button" className="end-btn" onClick={handleEnd}>
             학습 종료
           </button>
         )}
       </header>
+
+      {!ended && solved > 0 && (
+        <div className="progress-row">
+          <div className="progress-track">
+            <div
+              className="progress-fill"
+              style={{ width: `${(correct / solved) * 100}%` }}
+            />
+          </div>
+          <span className="progress-label">
+            {correct}/{solved}
+          </span>
+        </div>
+      )}
 
       <div className="body">
         {ended ? (
