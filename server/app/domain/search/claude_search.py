@@ -7,9 +7,10 @@
 """
 
 import logging
+import time
 
 from app.core.config import get_settings
-from app.domain.llm.claude import _client
+from app.domain.llm.claude import _client, _log_timing
 from app.domain.search.base import FoundArticle
 
 logger = logging.getLogger(__name__)
@@ -35,6 +36,7 @@ class ClaudeSearchProvider:
             return []
 
         query = ", ".join(concepts[:5])
+        started = time.monotonic()
         try:
             message = await _client().messages.create(
                 model=self._model,
@@ -54,6 +56,9 @@ class ClaudeSearchProvider:
             logger.warning("web_search 실패: %s", exc)
             return []
 
+        # 서버측 web_search 는 모델 생성 시간에 검색 왕복까지 얹히므로 tok/s 가 낮게 찍힌다.
+        # 탐색 탭이 느릴 때 설명 생성과 이 검색 중 어느 쪽이 오래 걸렸는지 가르는 값이다.
+        _log_timing("search", message, time.monotonic() - started)
         return _collect(message, limit)
 
 

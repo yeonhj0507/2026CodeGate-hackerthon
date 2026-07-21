@@ -11,7 +11,9 @@ Pydantic 으로 한 번 더 검증한다(스키마 강제만 믿지 않는다).
   로컬앱의 60초 receiveTimeout(config.dart) 안에 들어와야 한다.
 """
 
+import json
 import logging
+import time
 from functools import lru_cache
 
 import anthropic
@@ -26,6 +28,38 @@ logger = logging.getLogger(__name__)
 
 QUIZ_MAX_TOKENS = 16000
 SUMMARY_MAX_TOKENS = 4000
+
+
+def _log_timing(label: str, message, elapsed: float, payload: dict | None = None) -> None:
+    """호출 1건의 입출력 토큰과 실제 소요 시간을 남긴다.
+
+    "느리다"의 원인을 코드 구조에서 추론하지 않고 확정하기 위한 계측이다. 읽는 법:
+
+    - in 이 크고 out 이 작은데 느리다 → 병목이 LLM 출력이 아니다(네트워크·서버 쪽을 보라).
+    - out 이 압도적이다 → 출력 생성이 병목. 문항 수를 줄이거나 출력 속도를 올려야 한다.
+    - out 이 payload 대비 과하게 크다 → 그 차이가 **thinking 토큰**이다. thinking 은
+      화면에 안 보이지만 출력 전에 직렬로 생성되므로 시간을 그대로 쓴다. 이 경우
+      effort 를 낮추는 게 모델 교체나 문항 축소보다 먼저다.
+
+    payload_chars 는 tool 로 받은 JSON 의 글자 수다. 토큰이 아니라 대략의 비교 기준이며,
+    한국어는 대체로 1토큰이 1글자 남짓이라 out 과 자릿수만 견줘 보면 된다.
+    """
+    usage = getattr(message, "usage", None)
+    tokens_in = getattr(usage, "input_tokens", 0) or 0
+    tokens_out = getattr(usage, "output_tokens", 0) or 0
+    rate = tokens_out / elapsed if elapsed > 0 else 0.0
+    payload_chars = len(json.dumps(payload, ensure_ascii=False)) if payload else 0
+
+    logger.info(
+        "%s: in=%d out=%d elapsed=%.1fs (%.0f tok/s) payload_chars=%d cached_read=%d",
+        label,
+        tokens_in,
+        tokens_out,
+        elapsed,
+        rate,
+        payload_chars,
+        getattr(usage, "cache_read_input_tokens", 0) or 0,
+    )
 
 
 @lru_cache(maxsize=1)
@@ -50,6 +84,7 @@ class ClaudeProvider:
         numbered = "\n\n".join(f"[{i}] {p}" for i, p in enumerate(paragraphs))
         user = prompts.QUIZ_USER_TEMPLATE.format(title=title, paragraphs=numbered)
 
+        started = time.monotonic()
         try:
             # 스트리밍으로 받되 이벤트는 쓰지 않는다. 목적은 긴 응답의 타임아웃 회피.
             async with _client().messages.stream(
@@ -67,7 +102,9 @@ class ClaudeProvider:
         except Exception as exc:  # noqa: BLE001 - 아래에서 유형별로 변환
             raise _as_app_error(exc) from exc
 
-        return _tool_input(message, prompts.QUIZ_TOOL["name"])
+        payload = _tool_input(message, prompts.QUIZ_TOOL["name"])
+        _log_timing("quiz", message, time.monotonic() - started, payload)
+        return payload
 
     async def summarize_concepts(self, items: list[ConceptContext]) -> dict[str, str]:
         if not items:
@@ -96,6 +133,7 @@ class ClaudeProvider:
             + "\n".join(lines)
         )
 
+        started = time.monotonic()
         try:
             message = await _client().messages.create(
                 model=self._model,
@@ -112,6 +150,8 @@ class ClaudeProvider:
             raise _as_app_error(exc) from exc
 
         raw = _tool_input(message, prompts.SUMMARY_TOOL["name"])
+        _log_timing("summary", message, time.monotonic() - started, raw)
+
         out: dict[str, str] = {}
         for entry in raw.get("summaries", []):
             concept = entry.get("concept")
@@ -125,6 +165,7 @@ class ClaudeProvider:
         if not concepts:
             return ""
 
+        started = time.monotonic()
         try:
             message = await _client().messages.create(
                 model=self._model,
@@ -142,6 +183,7 @@ class ClaudeProvider:
         except Exception as exc:  # noqa: BLE001
             raise _as_app_error(exc) from exc
 
+        _log_timing("explore", message, time.monotonic() - started)
         return "".join(b.text for b in message.content if b.type == "text").strip()
 
 
