@@ -27,7 +27,7 @@ server/
 │     ├─ quiz/           # 문단 분할 · LLM 출력 정규화/검증
 │     ├─ scrap/          # 버퍼 append · TTL/상한 정리
 │     ├─ thoughtmap/     # merge(순수) · recommend(결핍·확장) · service(트랜잭션)
-│     └─ llm/            # base(프로토콜) · mock · claude · prompts
+│     └─ llm/            # base(프로토콜) · mock · claude · prompts · quiz_prompt_requirements(퀴즈 시스템 프롬프트 본문)
 ├─ alembic/              # 마이그레이션 (0001 users → 0002 도메인 테이블 → 0003 스크랩 URL화)
 ├─ seed/                 # 제휴 기사 데이터셋
 ├─ scripts/              # seed.py · demo_flow.py
@@ -108,7 +108,9 @@ python scripts/demo_flow.py   # 로그인 → 흐름 A → 흐름 B 엔드투엔
 
 `LLM_PROVIDER=mock`(기본)이면 키 없이 전 구간이 결정론적으로 동작한다.
 키가 있으면 `.env` 에 `ANTHROPIC_API_KEY` 를 넣고 `LLM_PROVIDER=claude` 로 바꾼다.
-프롬프트·tool 스키마는 `app/domain/llm/prompts.py`.
+프롬프트·tool 스키마는 `app/domain/llm/prompts.py`. **퀴즈 출제 시스템 프롬프트 본문은
+`app/domain/llm/quiz_prompt_requirements.py::QUIZ_SYSTEM_PROMPT` 로 분리**했다(`prompts.py::QUIZ_SYSTEM`
+이 재노출). 좋은 퀴즈 질문·개념어(conceptTag)를 뽑기 위한 프롬프트 튜닝은 그 파일에서만 한다.
 
 **모델·호출 정책** (`app/domain/llm/claude.py`) — 모델은 `claude-opus-4-8`.
 
