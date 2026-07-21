@@ -417,9 +417,13 @@ class _Legend extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.92),
+        color: Colors.white,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: AppColors.border),
+        // 테두리 대신 옅은 그림자로 띄운다(Figma — 노드·패널 카드와 같은 톤).
+        boxShadow: const [
+          BoxShadow(
+              color: Color(0x14000000), blurRadius: 6, offset: Offset(0, 2)),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
