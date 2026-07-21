@@ -5,15 +5,16 @@ services:
     image: pgvector/pgvector:pg16
     container_name: prober-db
     environment:
-      POSTGRES_USER: prober
-      POSTGRES_PASSWORD: prober
+      # .env.example 의 DATABASE_URL 기본값과 일치시킨다 (postgres:postgres@localhost/prober).
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
       POSTGRES_DB: prober
     ports:
       - "5432:5432"
     volumes:
       - prober-pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U prober -d prober"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d prober"]
       interval: 5s
       timeout: 3s
       retries: 10

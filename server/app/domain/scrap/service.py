@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.settings import get_settings
+from app.core.config import get_settings
 from app.domain.models import TempScrap
 from app.domain.schemas import ScrapRequest, ScrapResponse
 

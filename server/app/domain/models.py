@@ -5,21 +5,21 @@
 신문사 제휴(광고) 기반 추천 소스 데이터셋이다.
 """
 
-import uuid
 from datetime import datetime, timezone
 
+import sqlalchemy as sa
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import DateTime, Index, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
+from app.core.ids import new_id
 
 EMBEDDING_DIM = 1536
 
-
-def _uuid() -> str:
-    return str(uuid.uuid4())
+# JSONB 는 Postgres 전용이다. 담당2의 sqlite 스모크 경로(README)에서도 뜨도록 낮춘다.
+JSON_TYPE = JSONB().with_variant(sa.JSON(), "sqlite")
 
 
 def _utcnow() -> datetime:
@@ -31,12 +31,12 @@ class TempScrap(Base):
 
     __tablename__ = "temp_scraps"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     user_id: Mapped[str] = mapped_column(String(64), index=True)
     article_title: Mapped[str] = mapped_column(String(512))
     article_body: Mapped[str] = mapped_column(Text)
     # [{conceptTag, parentConcept, level, correct}] — 담당1 §3.6 계약 그대로.
-    results: Mapped[list] = mapped_column(JSONB, default=list)
+    results: Mapped[list] = mapped_column(JSON_TYPE, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
     __table_args__ = (Index("ix_temp_scraps_user_created", "user_id", "created_at"),)
@@ -47,14 +47,14 @@ class PartnerArticle(Base):
 
     __tablename__ = "partner_articles"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     title: Mapped[str] = mapped_column(String(512))
     url: Mapped[str] = mapped_column(String(1024))
     summary: Mapped[str] = mapped_column(Text, default="")
     publisher: Mapped[str] = mapped_column(String(128), default="")
     category: Mapped[str] = mapped_column(String(64), default="", index=True)
     # ["개념어", ...] — 추천 개념과 매칭하는 1차 키.
-    concept_tags: Mapped[list] = mapped_column(JSONB, default=list)
+    concept_tags: Mapped[list] = mapped_column(JSON_TYPE, default=list)
     published_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

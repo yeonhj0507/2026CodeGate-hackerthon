@@ -7,7 +7,7 @@ Pydantic 으로 한 번 더 검증한다(스키마 강제만 믿지 않는다).
 from anthropic import AsyncAnthropic
 
 from app.core.errors import AppError
-from app.core.settings import get_settings
+from app.core.config import get_settings
 from app.domain.llm import prompts
 
 _MAX_TOKENS = 8000
@@ -18,9 +18,9 @@ class ClaudeProvider:
         settings = get_settings()
         if not settings.anthropic_api_key:
             raise AppError(
-                "LLM_NOT_CONFIGURED",
-                "ANTHROPIC_API_KEY 가 비어 있다. LLM_PROVIDER=mock 으로 두거나 키를 설정하라.",
                 status_code=500,
+                code="LLM_NOT_CONFIGURED",
+                message="ANTHROPIC_API_KEY 가 비어 있다. LLM_PROVIDER=mock 으로 두거나 키를 설정하라.",
             )
         self._client = AsyncAnthropic(api_key=settings.anthropic_api_key)
         self._model = settings.anthropic_model
@@ -37,7 +37,11 @@ class ClaudeProvider:
         for block in message.content:
             if block.type == "tool_use":
                 return dict(block.input)
-        raise AppError("LLM_INVALID_OUTPUT", "Claude 가 tool 출력을 내지 않았다.", status_code=502)
+        raise AppError(
+            status_code=502,
+            code="LLM_INVALID_OUTPUT",
+            message="Claude 가 tool 출력을 내지 않았다.",
+        )
 
     async def generate_quiz(self, title: str, paragraphs: list[str]) -> dict:
         numbered = "\n\n".join(f"[{i}] {p}" for i, p in enumerate(paragraphs))

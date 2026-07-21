@@ -97,7 +97,11 @@ def _clamp_followups(raw, depth: int) -> list:
 async def generate_quiz(title: str, body: str, llm: LlmProvider) -> QuizResponse:
     paragraphs = split_paragraphs(body)
     if not paragraphs:
-        raise AppError("EMPTY_ARTICLE", "기사 본문에서 문단을 찾지 못했다.", status_code=422)
+        raise AppError(
+            status_code=422,
+            code="EMPTY_ARTICLE",
+            message="기사 본문에서 문단을 찾지 못했다.",
+        )
 
     key = _cache_key(title, body)
     hit = _cache.get(key)
@@ -110,9 +114,9 @@ async def generate_quiz(title: str, body: str, llm: LlmProvider) -> QuizResponse
         result = _normalize(await llm.generate_quiz(title, paragraphs), paragraphs)
     if not result.quiz:
         raise AppError(
-            "LLM_INVALID_OUTPUT",
-            "퀴즈 생성에 실패했다. 유효한 문항이 하나도 없다.",
             status_code=502,
+            code="LLM_INVALID_OUTPUT",
+            message="퀴즈 생성에 실패했다. 유효한 문항이 하나도 없다.",
         )
 
     _cache[key] = (time.time(), result)

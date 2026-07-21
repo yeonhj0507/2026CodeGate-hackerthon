@@ -1,23 +1,38 @@
-"""인증 의존성 — **개발용 스텁**.
+"""공유 인증 의존성 — 담당3의 모든 도메인 라우트가 Depends(get_current_user) 로 재사용.
 
-담당2(구현계획② §3.4)가 JWT 검증 구현을 넣을 자리다. 도메인 라우트는 이미
-`Depends(get_current_user)` 로 붙어 있으므로 이 함수 본문만 교체하면 된다.
-
-개발 중에는 `X-User-Id` 헤더로 계정을 흉내 낸다. 헤더가 없으면 "dev-user".
+명세 §3.4, §4.1: 익스텐션·로컬 앱이 각자 독립 로그인하되(토큰 비공유),
+서버는 토큰의 sub 로 동일 계정을 stateless 하게 식별한다(DB 조회 없음).
 """
+from dataclasses import dataclass
 
-from fastapi import Header
-from pydantic import BaseModel
+import jwt
+from fastapi import Depends
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+
+from app.core.errors import AppError
+from app.core.security import decode_token
+
+bearer_scheme = HTTPBearer(auto_error=True)
 
 
-class CurrentUser(BaseModel):
+@dataclass
+class CurrentUser:
     user_id: str
     client: str | None = None
 
 
 async def get_current_user(
-    x_user_id: str = Header(default="dev-user", alias="X-User-Id"),
-    x_client: str | None = Header(default=None, alias="X-Client"),
+    cred: HTTPAuthorizationCredentials = Depends(bearer_scheme),
 ) -> CurrentUser:
-    # TODO(담당2): HTTPBearer + decode_token 으로 교체. 반환 타입은 유지한다.
-    return CurrentUser(user_id=x_user_id, client=x_client)
+    try:
+        payload = decode_token(cred.credentials)
+    except jwt.ExpiredSignatureError:
+        raise AppError(status_code=401, code="TOKEN_EXPIRED", message="Access token expired")
+    except jwt.PyJWTError:
+        raise AppError(status_code=401, code="INVALID_TOKEN", message="Invalid access token")
+
+    user_id = payload.get("sub")
+    if not user_id:
+        raise AppError(status_code=401, code="INVALID_TOKEN", message="Token missing subject")
+
+    return CurrentUser(user_id=user_id, client=payload.get("client"))

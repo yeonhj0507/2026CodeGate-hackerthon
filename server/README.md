@@ -1,45 +1,87 @@
-# 프로버 백엔드 서버
+# Prober — 백엔드 서버
 
-`기능명세서_Prober.md` §4의 서버 도메인 로직 — 퀴즈 생성, 임시 스크랩 버퍼링, 지식그래프 갱신·추천.
-계정/인증(§4.1)은 담당2 소관이며 이 앱에 나중에 얹힌다.
+FastAPI · PostgreSQL(pgvector) · SQLAlchemy 2.0(async) · Alembic · JWT
 
-## 실행
+담당2의 **인증/계정 모듈**과 담당3의 **도메인 로직**(`/quiz`, `/scrap`, `/thoughtmap/update`)이
+**하나의 FastAPI 앱**을 공유한다. 공유 자산(`Base`, `get_db`, `get_current_user`, 에러 포맷)
+사용 규약은 [`app/domain/README.md`](app/domain/README.md) 참고.
+
+## 구조
+
+```
+server/
+├─ app/
+│  ├─ main.py            # FastAPI 앱, 라우터/에러/rate limit 등록
+│  ├─ core/              # 공유: 설정·DB·보안·인증의존성·에러·ratelimit·ID
+│  │  ├─ config.py       # .env 로드 (JWT · DB · LLM · 스크랩 버퍼 설정)
+│  │  ├─ db.py           # async engine, Base, get_db
+│  │  ├─ security.py     # bcrypt 해시 + JWT(HS256)
+│  │  ├─ deps.py         # get_current_user (도메인 라우트가 재사용)
+│  │  ├─ errors.py       # 통일 에러 포맷 {"error":{code,message}}
+│  │  ├─ ratelimit.py    # slowapi limiter
+│  │  └─ ids.py          # PK 생성기
+│  ├─ auth/              # 담당2: User 모델·스키마·서비스·라우터
+│  └─ domain/            # 담당3: 도메인 로직
+│     ├─ models.py       # TempScrap, PartnerArticle
+│     ├─ schemas.py      # API 계약 (필드명 고정)
+│     ├─ quiz/           # 문단 분할 · LLM 출력 정규화/검증
+│     ├─ scrap/          # 버퍼 append · TTL/상한 정리
+│     ├─ thoughtmap/     # merge(순수) · recommend · service(트랜잭션)
+│     └─ llm/            # base(프로토콜) · mock · claude · prompts
+├─ alembic/              # 마이그레이션 (0001 users → 0002 도메인 테이블)
+├─ seed/                 # 제휴 기사 데이터셋
+├─ scripts/              # seed.py · demo_flow.py
+└─ tests/
+```
+
+## 실행 방법
 
 ```bash
-cp .env.example .env
-docker compose up -d                 # pgvector/pgvector:pg16
-python -m venv .venv && .venv/Scripts/pip install -r requirements.txt
-.venv/Scripts/alembic upgrade head
-.venv/Scripts/python scripts/seed.py         # 제휴 기사 데이터셋
-.venv/Scripts/uvicorn app.main:app --reload  # http://localhost:8000/docs
+cd server
+python -m venv .venv
+# Windows PowerShell:  .venv\Scripts\Activate.ps1
+# Git Bash:            source .venv/Scripts/activate
+pip install -r requirements.txt
+
+cp .env.example .env          # 값 채우기 (특히 JWT_SECRET)
+
+docker compose up -d          # pgvector/pgvector:pg16
+alembic upgrade head          # DB 스키마 생성
+python scripts/seed.py        # 제휴 기사 데이터셋 시드
+uvicorn app.main:app --reload # http://127.0.0.1:8000/docs
 ```
 
 ```bash
-.venv/Scripts/pytest                          # Postgres 없으면 DB 테스트는 자동 skip
-.venv/Scripts/python scripts/demo_flow.py     # 흐름 A → 흐름 B 엔드투엔드
+pytest                        # Postgres 없으면 DB 테스트는 자동 skip
+python scripts/demo_flow.py   # 로그인 → 흐름 A → 흐름 B 엔드투엔드
 ```
+
+> **Postgres 없이 빠르게 확인**하려면 `.env` 의 `DATABASE_URL` 을
+> `sqlite+aiosqlite:///./prober_dev.db` 로 바꾸면 인증 경로는 그대로 동작한다(스모크용).
+> 단 추천의 pgvector 유사도 검색(스트레치)은 Postgres 전용이다.
 
 ## API
 
-| 메서드 | 경로 | 호출자 | 설명 |
-|---|---|---|---|
-| POST | `/quiz` | 익스텐션 | 기사 → 재질문 트리 포함 퀴즈 전체 정보 (저장 안 함) |
-| POST | `/scrap` | 익스텐션 | 세션 진단 결과를 계정 단위로 버퍼링 |
-| POST | `/thoughtmap/update` | 로컬앱 | 그래프 병합 + 추천 + 버퍼 소비·삭제 |
-| GET | `/health` | — | 헬스체크 |
+| 메서드 | 경로 | 호출자 | 요청 | 응답 |
+|---|---|---|---|---|
+| POST | `/auth/signup` | 공통 | `{email, password, display_name?}` | `201 {userId}` |
+| POST | `/auth/login` | 공통 | `{email, password, client?}` | `200 {accessToken, expiresIn, userId}` |
+| GET | `/auth/me` | 공통 | Bearer | `200 {userId, email, displayName}` |
+| DELETE | `/auth/me` | 공통 | Bearer | `204` |
+| POST | `/quiz` | 익스텐션 | `{articleTitle, articleBody}` | 재질문 트리 포함 퀴즈 전체 정보 (저장 안 함) |
+| POST | `/scrap` | 익스텐션 | `{articleTitle, articleBody, results[]}` | `201 {ok, buffered}` |
+| POST | `/thoughtmap/update` | 로컬앱 | `{graph, userContext}` | `{graph, recommendations, consumedScraps}` |
+| GET | `/health` | – | – | `{status:"ok"}` |
 
-에러 포맷은 전부 `{"error": {"code": "...", "message": "..."}}`.
+- 도메인 라우트는 전부 `Depends(get_current_user)` — 항상 `current_user.user_id` 기준으로만
+  조회/쓰기한다(계정 격리, 명세 §4.5).
+- 익스텐션·로컬 앱은 **각자 독립 로그인**(토큰 비공유), 동일 계정으로 서버에서 묶임.
+- 에러 응답은 모두 `{"error": {"code": "...", "message": "..."}}`.
 
-### 인증 (임시)
+## 계약 메모 (담당1·로컬앱과 합의 사항)
 
-담당2 합류 전까지 `app/core/deps.py:get_current_user` 가 **개발용 스텁**이다.
-`X-User-Id` 헤더로 계정을 흉내 내며, 없으면 `dev-user`. JWT 구현이 오면 이 함수 본문만 바뀌고
-라우터 시그니처는 그대로다.
-
-## 계약 메모
-
-- `/quiz`·`/scrap` 스키마는 구현계획① §5, 그래프 스키마는 로컬앱 `lib/data/dto/graph.dart` 와의 계약이다.
-  필드명(camelCase)을 바꾸면 양쪽이 깨진다.
+- `/quiz`·`/scrap` 스키마는 구현계획① §5, 그래프 스키마는 로컬앱 `lib/data/dto/graph.dart`
+  와의 계약이다. 필드명(camelCase)을 바꾸면 양쪽이 깨진다.
 - `anchorText` 는 LLM 출력을 쓰지 않고 **서버가 해당 문단 앞 50자로 직접 채운다.**
   익스텐션의 앵커 매칭 리스크(구현계획① §3.3)를 서버가 보증하기 위함이다.
 - 엣지 방향은 `from` = 선행 개념, `to` = 후행 개념. 스크랩의 `parentConcept` 가 후행이고
@@ -53,17 +95,7 @@ python -m venv .venv && .venv/Scripts/pip install -r requirements.txt
 키가 준비되면 `.env` 에 `ANTHROPIC_API_KEY` 를 넣고 `LLM_PROVIDER=claude` 로 바꾸기만 하면 된다.
 프롬프트·tool 스키마는 `app/domain/llm/prompts.py`.
 
-## 구조
+## 협의 필요 (담당2 ↔ 담당3)
 
-```
-app/
-├─ main.py                 FastAPI 앱 (담당2 auth 라우터가 여기 추가된다)
-├─ core/                   settings · db(Base/get_db) · deps(get_current_user) · errors
-└─ domain/
-   ├─ models.py            TempScrap, PartnerArticle
-   ├─ schemas.py           API 계약 (필드명 고정)
-   ├─ quiz/                문단 분할 · LLM 출력 정규화/검증
-   ├─ scrap/               버퍼 append · TTL/상한 정리
-   ├─ thoughtmap/          merge(순수) · recommend · service(트랜잭션)
-   └─ llm/                 base(프로토콜) · mock · claude · prompts
-```
+- 회원 탈퇴(`DELETE /auth/me`) 시 남은 `TempScrap` 삭제 훅/cascade 규약.
+  현재 `temp_scraps.user_id` 는 FK가 아니라 문자열이라 탈퇴 시 버퍼가 남는다.

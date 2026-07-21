@@ -34,9 +34,18 @@ def show(title: str, obj) -> None:
 
 
 async def main() -> None:
-    async with httpx.AsyncClient(
-        base_url=BASE_URL, headers={"X-User-Id": USER}, timeout=60
-    ) as client:
+    async with httpx.AsyncClient(base_url=BASE_URL, timeout=60) as client:
+        # 계정 생성 + 로그인 (담당2 /auth/*). 익스텐션·로컬앱은 각자 독립 로그인하지만
+        # 데모에서는 하나의 토큰으로 두 흐름을 이어서 보여 준다.
+        email, password = f"{USER}@example.com", "demo-password-1234"
+        await client.post("/auth/signup", json={"email": email, "password": password})
+        login = await client.post(
+            "/auth/login", json={"email": email, "password": password, "client": "extension"}
+        )
+        login.raise_for_status()
+        client.headers["Authorization"] = f"Bearer {login.json()['accessToken']}"
+        print(f"로그인 완료: {email}")
+
         # 흐름 A-2: 퀴즈 생성
         quiz = (
             await client.post(

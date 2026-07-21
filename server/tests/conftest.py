@@ -7,8 +7,9 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import delete, text
 from sqlalchemy.ext.asyncio import create_async_engine
 
+from app.auth.models import User
+from app.core.config import get_settings
 from app.core.db import SessionLocal, engine
-from app.core.settings import get_settings
 from app.domain.models import TempScrap
 from app.main import app
 
@@ -38,30 +39,57 @@ def db_available() -> bool:
     return asyncio.run(probe())
 
 
-@pytest.fixture
-def user_id() -> str:
-    """테스트마다 격리된 계정. 도메인 로직은 항상 user_id 로만 조회/쓰기한다."""
-    return f"test-{uuid.uuid4()}"
+async def _make_client(prefix: str):
+    """계정을 새로 만들어 로그인한 클라이언트를 반환.
+
+    담당2의 인증을 우회하지 않고 그대로 태운다 — 계정 단위 격리(명세 §4.5)가
+    도메인 로직의 전제이기 때문이다.
+    """
+    email = f"{prefix}-{uuid.uuid4().hex[:12]}@example.com"
+    password = "test-password-1234"
+
+    ac = AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
+
+    signup = await ac.post("/auth/signup", json={"email": email, "password": password})
+    assert signup.status_code == 201, signup.text
+    login = await ac.post(
+        "/auth/login", json={"email": email, "password": password, "client": "extension"}
+    )
+    assert login.status_code == 200, login.text
+
+    body = login.json()
+    ac.headers["Authorization"] = f"Bearer {body['accessToken']}"
+    return ac, body["userId"]
+
+
+async def _cleanup(ac: AsyncClient, user_id: str) -> None:
+    await ac.aclose()
+    async with SessionLocal() as db:
+        await db.execute(delete(TempScrap).where(TempScrap.user_id == user_id))
+        await db.execute(delete(User).where(User.id == user_id))
+        await db.commit()
 
 
 @pytest_asyncio.fixture
-async def client(user_id: str):
-    transport = ASGITransport(app=app)
-    async with AsyncClient(
-        transport=transport,
-        base_url="http://test",
-        headers={"X-User-Id": user_id},
-    ) as ac:
-        yield ac
+async def client(db_available):
+    if not db_available:
+        pytest.skip("Postgres 미기동 (docker compose up -d)")
 
-    # DB 없이 도는 테스트(/quiz 등)도 있으므로 정리 실패는 무시한다.
-    try:
-        async with SessionLocal() as db:
-            await db.execute(delete(TempScrap).where(TempScrap.user_id == user_id))
-            await db.commit()
-    except Exception:
-        pass
+    ac, user_id = await _make_client("test")
+    yield ac
+    await _cleanup(ac, user_id)
 
     # 테스트마다 이벤트 루프가 새로 뜬다. 이전 루프에 묶인 커넥션이 풀에 남으면
     # 다음 테스트에서 "Event loop is closed" 로 터지므로 매번 풀을 비운다.
     await engine.dispose()
+
+
+@pytest_asyncio.fixture
+async def other_client(db_available):
+    """다른 계정. 계정 간 데이터 격리 검증용."""
+    if not db_available:
+        pytest.skip("Postgres 미기동 (docker compose up -d)")
+
+    ac, user_id = await _make_client("other")
+    yield ac
+    await _cleanup(ac, user_id)

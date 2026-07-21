@@ -1,0 +1,19 @@
+.claude/
+node_modules/
+.env
+.env.local
+dist/
+.next/
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# Local dev databases
+*.db
+*.sqlite3

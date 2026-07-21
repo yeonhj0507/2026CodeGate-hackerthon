@@ -78,15 +78,27 @@ async def test_recommendations_use_partner_dataset(client):
     assert rec["articles"][0]["matchedConcepts"]
 
 
-async def test_user_isolation(client, user_id):
+async def test_user_isolation(client, other_client):
     await client.post("/scrap", json=scrap_payload("남의 기사", "환율", "무역수지", False))
 
-    other = await client.post(
-        "/thoughtmap/update",
-        json={"graph": {"nodes": [], "edges": []}},
-        headers={"X-User-Id": f"{user_id}-other"},
+    # 남의 계정 동기화는 내 버퍼를 건드리지 못한다.
+    other = await other_client.post(
+        "/thoughtmap/update", json={"graph": {"nodes": [], "edges": []}}
     )
     assert other.json()["consumedScraps"] == 0
 
     mine = await client.post("/thoughtmap/update", json={"graph": {"nodes": [], "edges": []}})
     assert mine.json()["consumedScraps"] == 1
+
+
+async def test_requires_authentication():
+    """토큰 없이는 도메인 라우트에 접근할 수 없다."""
+    from httpx import ASGITransport, AsyncClient
+
+    from app.main import app
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        for path in ("/quiz", "/scrap", "/thoughtmap/update"):
+            res = await ac.post(path, json={})
+            assert res.status_code in (401, 403), path
+            assert "error" in res.json()
