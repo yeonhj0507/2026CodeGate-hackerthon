@@ -11,6 +11,7 @@ import 'package:prober_local/data/dto/graph.dart';
 import 'package:prober_local/data/dto/recommendation.dart';
 import 'package:prober_local/data/dto/user_context.dart';
 import 'package:prober_local/providers/providers.dart';
+import 'package:prober_local/ui/graph_view.dart';
 import 'package:prober_local/ui/home_page.dart';
 
 /// **특성화 테스트** — 지금의 화면 배선을 있는 그대로 못 박는다.
@@ -166,8 +167,17 @@ void main() {
       await pumpHome(tester, graph: graph);
       await openPanel(tester, '추천');
 
-      // 내가 쌓은 개념은 2개 그대로다 — 추천이 숫자를 부풀리면 안 된다.
-      expect(find.textContaining('개념 2'), findsOneWidget);
+      // 지도에 넘어간 그래프에서 임시 노드는 state=unknown 으로만 존재한다.
+      // 내가 쌓은(진단된) 개념은 2개 그대로다 — 추천이 숫자를 부풀리면 안 된다.
+      final view = tester.widget<ThoughtMapView>(find.byType(ThoughtMapView));
+      expect(
+        view.graph.nodes.where((n) => n.state != NodeState.unknown),
+        hasLength(2),
+      );
+      expect(
+        view.graph.nodes.where((n) => n.state == NodeState.unknown),
+        hasLength(1),
+      );
     });
 
     testWidgets('패널을 닫으면 지도만 남는다', (tester) async {

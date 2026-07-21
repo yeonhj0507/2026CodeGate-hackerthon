@@ -91,8 +91,6 @@ class NodeDetailCard extends StatelessWidget {
               spacing: 8,
               children: [
                 _Chip(label: style.label, color: style.border),
-                if (node.isPrereq)
-                  const _Chip(label: '선행개념', color: AppColors.pinkMuted),
               ],
             ),
             if (node.summaryMeta != null) ...[

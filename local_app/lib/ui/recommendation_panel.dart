@@ -69,22 +69,22 @@ class RecommendationPanel extends ConsumerWidget {
                   ),
                 )
               : ListView(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+                  padding: const EdgeInsets.fromLTRB(4, 8, 4, 8),
                   children: [
                     if (recommendations.gapConcepts.isNotEmpty) ...[
                       const _SectionTitle('모를 것 같은 개념'),
-                      const SizedBox(height: 10),
+                      const SizedBox(height: 8),
                       for (final c in recommendations.gapConcepts)
                         _ConceptCard(recommendation: c),
                     ],
                     // 확장은 "아직 내 그래프에 없는 새 개념"이다. 제휴 데이터셋이
                     // 내 주제를 못 덮으면 비는 게 정상이라, 섹션을 숨기는 대신
                     // 안내를 띄운다 — 없어진 게 아니라 아직 재료가 없다는 뜻이다.
-                    const SizedBox(height: 22),
+                    const SizedBox(height: 14),
                     const _SectionTitle('확장 개념'),
                     const SizedBox(height: 2),
                     const _SectionCaption('아는 개념에서 새로 알 수 있는 키워드'),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 8),
                     if (recommendations.expansionConcepts.isEmpty)
                       const _EmptyHint(
                         text: '아직 추천할 키워드가 없어요.\n'
@@ -97,16 +97,16 @@ class RecommendationPanel extends ConsumerWidget {
                     // 숨긴다 — 확장과 달리 "아직 이르다"가 곧 "틀린 게 없다"라
                     // 굳이 안내할 일이 아니다.
                     if (recommendations.retryConcepts.isNotEmpty) ...[
-                      const SizedBox(height: 22),
+                      const SizedBox(height: 14),
                       const _SectionTitle('다시 도전할 개념'),
-                      const SizedBox(height: 10),
+                      const SizedBox(height: 8),
                       for (final e in recommendations.retryConcepts)
                         _RetryCard(recommendation: e),
                     ],
                     if (recommendations.articles.isNotEmpty) ...[
-                      const SizedBox(height: 22),
+                      const SizedBox(height: 14),
                       const _SectionTitle('읽을 만한 기사'),
-                      const SizedBox(height: 10),
+                      const SizedBox(height: 8),
                       for (final a in recommendations.articles)
                         _ArticleCard(recommendation: a),
                     ],
@@ -351,6 +351,7 @@ class _ArticleCard extends StatelessWidget {
 }
 
 /// 추천 탭의 카드 한 장. 라이트 팔레트에서는 그림자 대신 옅은 테두리로 나눈다.
+/// 추천 탭의 카드 한 장. 테두리 없이 옅은 그림자로만 배경과 나눈다.
 class _CardShell extends StatelessWidget {
   const _CardShell({required this.child, this.onTap});
 
@@ -360,18 +361,20 @@ class _CardShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      decoration: BoxDecoration(
-        color: AppColors.panelBg,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: AppColors.border),
+      margin: const EdgeInsets.only(bottom: 6),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.all(Radius.circular(10)),
+        boxShadow: [
+          BoxShadow(color: Color(0x14000000), blurRadius: 6, offset: Offset(0, 2)),
+        ],
       ),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(10),
           onTap: onTap,
-          child: Padding(padding: const EdgeInsets.all(14), child: child),
+          child: Padding(padding: const EdgeInsets.all(12), child: child),
         ),
       ),
     );
@@ -472,11 +475,11 @@ class _ConceptDetailView extends ConsumerWidget {
                 fontSize: 12.5, height: 1.6, color: AppColors.textPrimary),
           ),
           if (node.oxQuiz != null) ...[
-            const SizedBox(height: 18),
+            const SizedBox(height: 14),
             _OxQuizCard(quiz: node.oxQuiz!, nodeId: node.id),
           ],
           if (related.isNotEmpty) ...[
-            const SizedBox(height: 18),
+            const SizedBox(height: 14),
             const Text('연관 개념',
                 style: TextStyle(
                     fontSize: 11.5,
@@ -557,9 +560,9 @@ class _OxQuizCardState extends ConsumerState<_OxQuizCard> {
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: AppColors.panelBg,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: AppColors.border),
       ),
