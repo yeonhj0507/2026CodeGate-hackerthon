@@ -57,61 +57,57 @@ class ExplorePanel extends ConsumerWidget {
       await ref.read(exploreControllerProvider.notifier).run(selectedNodes);
     }
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (onClose != null) ...[
-            PanelHeader(title: '탐색', onClose: onClose!),
-            const SizedBox(height: 4),
-          ],
-          Text(
-            '함께 알아보고 싶은 개념을 최대 $maxKeywords개까지 골라보세요 '
-            '(${selectedIds.length}/$maxKeywords)',
-            style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
-          ),
-          const SizedBox(height: 10),
-          _KeywordDropZone(
-            selectedNodes: selectedNodes,
-            canAcceptMore: selectedIds.length < maxKeywords,
-            onAccept: add,
-            onRemove: remove,
-          ),
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton(
-              onPressed:
-                  selectedNodes.isEmpty || result.isLoading ? null : run,
-              style: FilledButton.styleFrom(
-                backgroundColor: AppColors.pink,
-                disabledBackgroundColor: AppColors.border,
-              ),
-              child: Text(result.isLoading ? '찾는 중…' : '더 탐색하기'),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Expanded(
-            child: !revealed
-                ? const SizedBox.shrink()
-                : result.when(
-                    loading: () => const Center(
-                      child: SizedBox(
-                        width: 22,
-                        height: 22,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2, color: AppColors.pink),
-                      ),
-                    ),
-                    error: (e, _) => _Hint('탐색에 실패했어요.\n$e'),
-                    data: (data) => data == null || data.isEmpty
-                        ? const _Hint('보여줄 내용을 찾지 못했어요.')
-                        : _ExploreResultView(result: data),
-                  ),
-          ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (onClose != null) ...[
+          PanelHeader(title: '탐색', onClose: onClose!),
+          const SizedBox(height: 14),
         ],
-      ),
+        Text(
+          '함께 알아보고 싶은 개념을 최대 $maxKeywords개까지 골라보세요 '
+          '(${selectedIds.length}/$maxKeywords)',
+          style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
+        ),
+        const SizedBox(height: 10),
+        _KeywordDropZone(
+          selectedNodes: selectedNodes,
+          canAcceptMore: selectedIds.length < maxKeywords,
+          onAccept: add,
+          onRemove: remove,
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton(
+            onPressed: selectedNodes.isEmpty || result.isLoading ? null : run,
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.pink,
+              disabledBackgroundColor: AppColors.border,
+            ),
+            child: Text(result.isLoading ? '찾는 중…' : '더 탐색하기'),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Expanded(
+          child: !revealed
+              ? const SizedBox.shrink()
+              : result.when(
+                  loading: () => const Center(
+                    child: SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: AppColors.pink),
+                    ),
+                  ),
+                  error: (e, _) => _Hint('탐색에 실패했어요.\n$e'),
+                  data: (data) => data == null || data.isEmpty
+                      ? const _Hint('보여줄 내용을 찾지 못했어요.')
+                      : _ExploreResultView(result: data),
+                ),
+        ),
+      ],
     );
   }
 }
@@ -145,12 +141,18 @@ class _KeywordDropZone extends StatelessWidget {
           constraints: const BoxConstraints(minHeight: 64),
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
-            color: hovering ? AppColors.pinkBgSoft : AppColors.panelBg,
+            color: hovering ? AppColors.pinkBgSoft : Colors.white,
             borderRadius: BorderRadius.circular(10),
             border: Border.all(
-              color: hovering ? AppColors.pink : AppColors.border,
-              width: hovering ? 1.6 : 1,
+              color: hovering ? AppColors.pink : Colors.transparent,
+              width: 1.6,
             ),
+            boxShadow: hovering
+                ? null
+                : const [
+                    BoxShadow(
+                        color: Color(0x14000000), blurRadius: 6, offset: Offset(0, 2)),
+                  ],
           ),
           child: selectedNodes.isEmpty
               ? const Center(
@@ -229,10 +231,12 @@ class _ExploreResultView extends StatelessWidget {
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: AppColors.panelBg,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: AppColors.border),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.all(Radius.circular(10)),
+              boxShadow: [
+                BoxShadow(color: Color(0x14000000), blurRadius: 6, offset: Offset(0, 2)),
+              ],
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -294,9 +298,12 @@ class _ExploreArticleTile extends StatelessWidget {
           onTap: () => _open(context),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-            decoration: BoxDecoration(
-              border: Border.all(color: AppColors.border),
-              borderRadius: BorderRadius.circular(8),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.all(Radius.circular(8)),
+              boxShadow: [
+                BoxShadow(color: Color(0x14000000), blurRadius: 6, offset: Offset(0, 2)),
+              ],
             ),
             child: Row(
               children: [

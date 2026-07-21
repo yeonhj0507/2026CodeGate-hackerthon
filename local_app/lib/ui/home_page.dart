@@ -9,7 +9,6 @@ import 'archive_panel.dart';
 import 'expansion_overlay.dart';
 import 'explore_panel.dart';
 import 'graph_view.dart';
-import 'node_detail_card.dart';
 import 'onboarding_view.dart';
 import 'recommendation_panel.dart';
 import 'widgets/logo_mark.dart';
@@ -41,7 +40,6 @@ class _HomePageState extends ConsumerState<HomePage> {
     final graphAsync = ref.watch(graphProvider);
     final sync = ref.watch(syncControllerProvider);
     final mode = ref.watch(rightPanelModeProvider);
-    final selectedId = ref.watch(selectedNodeIdProvider);
 
     _listenForSyncFeedback();
 
@@ -53,8 +51,8 @@ class _HomePageState extends ConsumerState<HomePage> {
         ? withExpansionCandidates(graph, sync.recommendations.expansionConcepts)
         : graph;
 
-    // 상세도 표시용 그래프에서 찾는다 — 임시 노드를 눌렀을 때 빈손이 되지 않게.
-    final selected = selectedId == null ? null : displayGraph.nodeById(selectedId);
+    // 노드 상세 카드는 ThoughtMapView 가 노드 옆에 직접 띄운다(_NodeDetailOverlay).
+    // 여기서 좌하단에 고정으로 그리지 않는다.
 
     return Scaffold(
       backgroundColor: AppColors.canvasBg,
@@ -65,7 +63,7 @@ class _HomePageState extends ConsumerState<HomePage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _TopBar(mode: mode, graph: graph),
+              _TopBar(mode: mode),
               const SizedBox(height: 20),
               Expanded(
                 child: graph.isEmpty
@@ -74,16 +72,12 @@ class _HomePageState extends ConsumerState<HomePage> {
                         graph: displayGraph,
                         sync: sync,
                         mode: mode,
-                        selected: selected,
                         onErrorDismiss: () => ref
                             .read(syncControllerProvider.notifier)
                             .clearError(),
                         onClosePanel: () => ref
                             .read(rightPanelModeProvider.notifier)
                             .state = RightPanelMode.closed,
-                        onCloseNodeDetail: () => ref
-                            .read(selectedNodeIdProvider.notifier)
-                            .state = null,
                       ),
               ),
             ],
@@ -121,50 +115,22 @@ class _HomePageState extends ConsumerState<HomePage> {
 }
 
 class _TopBar extends ConsumerWidget {
-  const _TopBar({required this.mode, required this.graph});
+  const _TopBar({required this.mode});
 
   final RightPanelMode mode;
-  final Graph graph;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final sync = ref.watch(syncControllerProvider);
-
+    // 동기화 버튼과 마지막 동기화 시각은 지도 좌하단 FAB 로 옮겼다
+    // (graph_view.dart 의 _SyncFab). 상단바는 로고와 패널 전환만 남긴다.
     return Row(
       children: [
         const LogoLockup(),
-        if (!graph.isEmpty) ...[
-          const SizedBox(width: 14),
-          _GraphStats(graph: graph),
-        ],
         const Spacer(),
-        // 경험치 배지 — 눌러서 적립 내역을 연다.
-        const XpBadge(),
-        const SizedBox(width: 12),
         if (AppConfig.useMock) ...[
           const _MockBadge(),
           const SizedBox(width: 12),
         ],
-        _LastSynced(syncedAt: sync.lastSyncedAt),
-        const SizedBox(width: 12),
-        OutlinedButton.icon(
-          onPressed: sync.inProgress
-              ? null
-              : () => ref.read(syncControllerProvider.notifier).sync(),
-          style: OutlinedButton.styleFrom(
-            foregroundColor: AppColors.textPrimary,
-            side: const BorderSide(color: AppColors.border),
-          ),
-          icon: sync.inProgress
-              ? const SizedBox(
-                  width: 14,
-                  height: 14,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.sync, size: 18),
-          label: Text(sync.inProgress ? '가져오는 중…' : '내 이력 가져오기'),
-        ),
-        const SizedBox(width: 8),
         PopupMenuButton<String>(
           icon: const Icon(Icons.more_vert, color: AppColors.textMuted),
           onSelected: (v) {
@@ -268,19 +234,15 @@ class _MainContent extends StatelessWidget {
     required this.graph,
     required this.sync,
     required this.mode,
-    required this.selected,
     required this.onErrorDismiss,
     required this.onClosePanel,
-    required this.onCloseNodeDetail,
   });
 
   final Graph graph;
   final SyncState sync;
   final RightPanelMode mode;
-  final GraphNode? selected;
   final VoidCallback onErrorDismiss;
   final VoidCallback onClosePanel;
-  final VoidCallback onCloseNodeDetail;
 
   @override
   Widget build(BuildContext context) {
@@ -291,7 +253,15 @@ class _MainContent extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const _FilterChips(),
+              const Row(
+                children: [
+                  _FilterChips(),
+                  SizedBox(width: 12),
+                  // 경험치 배지 — 눌러서 적립 내역을 연다. 상단바를 비우면서
+                  // 필터 칩 옆으로 내려왔다.
+                  XpBadge(),
+                ],
+              ),
               const SizedBox(height: 8),
               if (sync.error != null)
                 _SyncErrorBar(
@@ -314,16 +284,7 @@ class _MainContent extends StatelessWidget {
                       ),
                     ),
                     const Positioned(right: 16, top: 16, child: _Legend()),
-                    if (selected != null)
-                      Positioned(
-                        left: 16,
-                        bottom: 16,
-                        child: NodeDetailCard(
-                          node: selected!,
-                          graph: graph,
-                          onClose: onCloseNodeDetail,
-                        ),
-                      ),
+                    // 노드 상세 카드는 ThoughtMapView 안에서 노드 옆에 뜬다.
                   ],
                 ),
               ),
@@ -365,9 +326,9 @@ class _DockedPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(20, 16, 12, 20),
+      padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: AppColors.panelBg,
+        color: AppColors.pinkBgFaint,
         border: Border.all(color: AppColors.border),
         borderRadius: BorderRadius.circular(16),
       ),
@@ -420,24 +381,6 @@ class _FilterChipsState extends State<_FilterChips> {
           ],
         ),
       ),
-    );
-  }
-}
-
-/// 지도가 지금 무엇을 담고 있는지 한 줄로. 노드가 화면 밖에 있어도 총량이
-/// 보여서, 지도에 뜬 개수와 어긋나면 바로 눈에 띈다.
-class _GraphStats extends StatelessWidget {
-  const _GraphStats({required this.graph});
-
-  final Graph graph;
-
-  @override
-  Widget build(BuildContext context) {
-    final notUnderstood = graph.nodes.where((n) => n.isNotUnderstood).length;
-    final understood = graph.nodes.where((n) => n.isUnderstood).length;
-    return Text(
-      '개념 ${graph.nodes.length} · 이해완료 $understood · 미이해 $notUnderstood',
-      style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
     );
   }
 }
@@ -543,24 +486,6 @@ class _LegendRow extends StatelessWidget {
         Text(label,
             style: const TextStyle(fontSize: 11.5, color: AppColors.textPrimary)),
       ],
-    );
-  }
-}
-
-class _LastSynced extends StatelessWidget {
-  const _LastSynced({required this.syncedAt});
-
-  final DateTime? syncedAt;
-
-  @override
-  Widget build(BuildContext context) {
-    if (syncedAt == null) return const SizedBox.shrink();
-    final t = syncedAt!;
-    final hh = t.hour.toString().padLeft(2, '0');
-    final mm = t.minute.toString().padLeft(2, '0');
-    return Text(
-      '마지막 동기화 $hh:$mm',
-      style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
     );
   }
 }

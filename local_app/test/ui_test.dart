@@ -60,14 +60,6 @@ void main() {
       expect(find.text('물가상승률'), findsOneWidget);
     });
 
-    testWidgets('선행개념 노드에 라벨을 붙인다', (tester) async {
-      await tester.pumpWidget(host(const ThoughtMapView(graph: graph)));
-      await tester.pumpAndSettle();
-
-      // 물가상승률만 isPrereq = true.
-      expect(find.text('선행개념'), findsOneWidget);
-    });
-
     testWidgets('노드를 탭하면 선택 상태가 바뀐다', (tester) async {
       final container = ProviderContainer();
       addTearDown(container.dispose);
@@ -88,12 +80,17 @@ void main() {
 
       expect(container.read(selectedNodeIdProvider), isNull);
 
-      await tester.tap(find.text('실질금리'));
+      // 선택되면 상세 카드가 노드 옆에 뜨는데 카드 제목도 같은 텍스트라
+      // find.text 가 둘을 구분 못 한다 — 선택 전(유일할 때) 좌표를 잡아
+      // 이후로는 좌표로만 탭한다.
+      final nodeCenter = tester.getCenter(find.text('실질금리'));
+
+      await tester.tapAt(nodeCenter);
       await tester.pumpAndSettle();
       expect(container.read(selectedNodeIdProvider), 'c_실질금리');
 
       // 같은 노드를 다시 누르면 선택이 풀린다.
-      await tester.tap(find.text('실질금리'));
+      await tester.tapAt(nodeCenter);
       await tester.pumpAndSettle();
       expect(container.read(selectedNodeIdProvider), isNull);
     });
