@@ -2,7 +2,6 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:graphview/GraphView.dart' as gv;
 import 'package:url_launcher/url_launcher.dart';
 
 import '../data/dto/graph.dart';
@@ -16,17 +15,18 @@ import 'radial_cluster_layout.dart';
 ///
 /// **기사 중심 방사형 레이아웃**을 쓴다(radial_cluster_layout.dart). 기사가
 /// 클러스터의 중심에 오고, level0(기사에서 바로 다룬 개념)이 첫 고리, 그 선행
-/// 개념이 바깥 고리로 감싼다. 기사가 여러 개면 각 기사가 독립된 클러스터가 된다.
-/// 좌표 계산은 [computeRadialLayout] 이 하고, graphview 에는 좌표를 꽂기만 하는
-/// [RadialClusterAlgorithm] 을 넘긴다.
+/// 개념이 바깥 고리로 감싼다. 좌표 계산은 [computeRadialLayout] 이 하고, 여기서는
+/// 그 **중심 좌표**를 그대로 그린다.
 ///
-/// 줌·팬은 `GraphView.builder`가 내부에 품은 InteractiveViewer가 담당하되,
-/// 변환 행렬은 우리가 주입한 [_transformController]로 직접 제어한다.
+/// **렌더는 graphview 없이 직접 한다.** 좌표를 우리가 이미 다 갖고 있어서
+/// (`computeRadialLayout`), 캔버스는 `InteractiveViewer`(줌·팬) + `Stack`(노드) +
+/// `CustomPaint`(엣지)면 충분하다. 이렇게 하면 노드 드래그·상세 오버레이·줌이
+/// 전부 우리 손 안에 들어온다.
 ///
-/// **엣지 없는 노드도 반드시 그린다.** graphview 1.5.1 의 기본 델리게이트는
-/// 그릴 그래프를 *엣지에서만* 모은다([_AllNodesDelegate] 참고). 진단 초기에는
-/// 개념 대부분이 아직 관계를 못 얻어 고립돼 있어서, 그대로 두면 "개념 6"인데
-/// 지도에는 연결된 2개만 뜬다.
+/// **노드는 손으로 옮길 수 있다.** 노드를 바로 끌면([_ConceptNode] 의 pan) 그
+/// 위치가 [nodePositionsProvider] 에 실시간 반영되고, 놓는 순간 로컬 DB에 영구
+/// 저장된다. 저장된 위치는 방사형 자동 배치 위에 덮어씌워진다([RadialLayout.merged]).
+/// 빈 곳을 끌면 화면이 팬되고, 길게 눌러 끌면 "탐색" 키워드로 담기는 건 그대로다.
 ///
 /// **기본 보기는 '최소 배율 고정' 맞춤이다.** 노드가 많아지면 전체를 다 담으려는
 /// 맞춤은 배율을 극단적으로 낮춰 노드가 보이지 않을 만큼 작아진다. 그래서 기본
@@ -44,15 +44,12 @@ class ThoughtMapView extends ConsumerStatefulWidget {
 
 class _ThoughtMapViewState extends ConsumerState<ThoughtMapView>
     with SingleTickerProviderStateMixin {
-  // 노드 상세 카드가 팬·줌을 따라가려면 캔버스 변환 행렬을 직접 들고 있어야
-  // 한다 — GraphViewController 에 넘기고 이 컨트롤러로 직접 구독한다.
+  // 캔버스 변환(줌·팬) 행렬. 노드 상세 오버레이가 이 행렬로 화면 좌표를 다시
+  // 구하고, 화면 맞춤([_zoomToFit])이 이 값을 직접 세팅한다.
   //
-  // **여기서 dispose 하지 않는다.** GraphViewController 에 넘기고 나면 GraphView
-  // 내부(`_GraphViewState`)가 소유권을 가져가 자기 dispose 시점에 정리한다.
-  // 또 dispose 하면 "used after being disposed" 로 죽는다.
+  // **우리가 소유한다.** InteractiveViewer 는 외부에서 받은 컨트롤러를 dispose
+  // 하지 않으므로 여기서 정리한다.
   final _transformController = TransformationController();
-  late final _controller =
-      gv.GraphViewController(transformationController: _transformController);
 
   // 화면 맞춤 애니메이션. initState 에서 즉시 만든다 — late 로 두면 그래프가
   // 계속 비어 _zoomToFit 이 한 번도 안 불린 채 dispose 될 때 거기서 처음
@@ -60,10 +57,9 @@ class _ThoughtMapViewState extends ConsumerState<ThoughtMapView>
   late final AnimationController _panController;
   Animation<Matrix4>? _panAnimation;
 
-  /// [_NodeDetailOverlay]가 선택된 노드의 레이아웃 좌표를 찾을 수 있게 마지막
-  /// build 의 노드 맵을 들고 있는다. 노드 위치는 레이아웃 시점에 고정되고
-  /// 팬·줌만 바뀌므로, 선택이 바뀔 때마다 그래프를 다시 만들 필요는 없다.
-  Map<String, gv.Node> _nodesById = const {};
+  /// 마지막 build 의 (수동 위치까지 반영된) 레이아웃. 오버레이·줌·드래그 시작점이
+  /// 이 좌표를 참조한다.
+  RadialLayout _layout = const RadialLayout({}, Rect.zero);
 
   @override
   void initState() {
@@ -75,6 +71,7 @@ class _ThoughtMapViewState extends ConsumerState<ThoughtMapView>
   @override
   void dispose() {
     _panController.dispose();
+    _transformController.dispose();
     super.dispose();
   }
 
@@ -86,23 +83,25 @@ class _ThoughtMapViewState extends ConsumerState<ThoughtMapView>
   /// 매 빌드마다 맞추면 사용자가 확대해 둔 상태를 빼앗는다.
   String? _fittedShape;
 
+  /// 방사형 좌표를 그래프 모양이 바뀔 때만 다시 계산하기 위한 캐시. 드래그로
+  /// 수동 위치만 바뀔 때는 BFS를 다시 돌리지 않고 이 base 위에 덮어씌운다.
+  String? _layoutShape;
+  RadialLayout _baseLayout = const RadialLayout({}, Rect.zero);
+
   String _shapeOf(Graph g) => [
         for (final n in g.nodes) n.id,
         '|',
         for (final e in g.edges) '${e.from}>${e.to}',
       ].join(',');
 
-  /// 노드 하나가 **혼자** 리빌드될 때 나머지가 지워지는 것을 막는다.
-  ///
-  /// graphview 1.5.1 의 `performLayout` 은 전체 재계산이 아닐 때 자식 배치
-  /// (`_layoutNodesLazily`)를 통째로 건너뛰는데, 그 뒤 `endLayout()` 은
-  /// **이번 배치에서 재사용되지 않은 자식을 전부 언마운트**한다. 그래서 재계산
-  /// 없는 재레이아웃이 한 번만 일어나도 노드가 몰살된다.
-  ///
-  /// 노드를 탭할 때는 상위(HomePage)가 선택 상태를 구독해 함께 리빌드되므로
-  /// 재계산이 걸려 문제가 드러나지 않는다. 반면 드래그는 Draggable 이 자기
-  /// 자식만 다시 그리기 때문에 이 경로를 정통으로 밟는다.
-  void _keepNodesAlive() => _controller.forceRecalculation();
+  RadialLayout _baseLayoutFor(Graph g) {
+    final shape = _shapeOf(g);
+    if (shape != _layoutShape) {
+      _layoutShape = shape;
+      _baseLayout = computeRadialLayout(g);
+    }
+    return _baseLayout;
+  }
 
   void _fitWhenShapeChanged(Graph g) {
     final shape = _shapeOf(g);
@@ -114,51 +113,29 @@ class _ThoughtMapViewState extends ConsumerState<ThoughtMapView>
     });
   }
 
-  /// graphview 의 `zoomToFit()` 과 같은 계산이지만 채움 비율을 낮춰(0.7) 화면에
-  /// 여백을 더 남긴다. 패키지 구현은 95%를 채워 꽉 차 보인다.
-  ///
-  /// 노드 좌표는 [_nodesById] 에서, 뷰포트 크기는 이 위젯 자신의 RenderBox 에서
-  /// 얻는다. 애니메이션은 패키지 내부(`animateToMatrix`)와 같은 방식으로 맞췄다.
+  /// 그래프 전체를 화면에 맞춘다. 채움 비율을 낮춰(0.85) 여백을 남기고, 배율은
+  /// 읽기 좋은 하한/상한 사이로 고정한다(방사형 클러스터가 많아지면 전체를
+  /// 담으려는 배율이 극단적으로 낮아져 노드가 안 보이기 때문).
   void _zoomToFit() {
-    if (_nodesById.isEmpty) return;
+    final bounds = _layout.bounds;
+    if (bounds.width <= 0 || bounds.height <= 0) return;
     final renderBox = context.findRenderObject() as RenderBox?;
     if (renderBox == null || !renderBox.hasSize) return;
-
-    var minX = double.infinity;
-    var minY = double.infinity;
-    var maxX = double.negativeInfinity;
-    var maxY = double.negativeInfinity;
-    for (final node in _nodesById.values) {
-      minX = math.min(minX, node.position.dx);
-      minY = math.min(minY, node.position.dy);
-      maxX = math.max(maxX, node.position.dx + node.size.width);
-      maxY = math.max(maxY, node.position.dy + node.size.height);
-    }
-    final boundsWidth = maxX - minX;
-    final boundsHeight = maxY - minY;
-    if (boundsWidth <= 0 || boundsHeight <= 0) return;
 
     final vp = renderBox.size;
     const paddingFactor = 0.85;
     final fit = math.min(
-      (vp.width / boundsWidth) * paddingFactor,
-      (vp.height / boundsHeight) * paddingFactor,
+      (vp.width / bounds.width) * paddingFactor,
+      (vp.height / bounds.height) * paddingFactor,
     );
-    // **하한을 둔다.** 방사형 클러스터가 많아지면 전체를 담으려는 배율이
-    // 극단적으로 낮아져 노드가 안 보인다. 읽기 좋은 하한 아래로는 내리지 않고
-    // 넘치는 부분은 팬으로 둘러보게 한다. 상한은 노드 몇 개짜리 작은 지도가
-    // 과하게 확대되지 않게 막는다.
     final scale = fit.clamp(_minZoomScale, _maxZoomScale);
 
-    final scaledWidth = boundsWidth * scale;
-    final scaledHeight = boundsHeight * scale;
-    final centerOffset = Offset(
-      (vp.width - scaledWidth) / 2 - minX * scale,
-      (vp.height - scaledHeight) / 2 - minY * scale,
-    );
-
+    // 캔버스는 bounds.topLeft 를 원점(0,0)으로 그린다(build 참고). 그래서
+    // minX/minY 항 없이 뷰포트 중앙에 배치하면 된다.
+    final tx = (vp.width - bounds.width * scale) / 2;
+    final ty = (vp.height - bounds.height * scale) / 2;
     final target = Matrix4.identity()
-      ..translateByDouble(centerOffset.dx, centerOffset.dy, 0, 1)
+      ..translateByDouble(tx, ty, 0, 1)
       ..scaleByDouble(scale, scale, scale, 1);
 
     _panController.reset();
@@ -188,81 +165,92 @@ class _ThoughtMapViewState extends ConsumerState<ThoughtMapView>
     // (article_nodes.dart 주석 — 서버가 기사를 개념으로 착각하면 안 된다).
     final graph = withArticleNodes(widget.graph);
 
-    // 기사 중심 방사형 좌표를 계산한다(순수 함수 — 같은 그래프면 같은 좌표).
-    final layout = computeRadialLayout(graph);
+    // 자동 배치(캐시) 위에 사용자가 옮긴 수동 위치를 덮어씌운다.
+    final overrides = ref.watch(nodePositionsProvider);
+    final layout = _baseLayoutFor(graph).merged(overrides);
+    _layout = layout;
 
     _fitWhenShapeChanged(graph);
 
     // 선택 상태는 일부러 여기서 watch하지 않는다. 여기서 watch하면 노드를 고를
     // 때마다 그래프 전체가 다시 만들어지고 레이아웃이 튄다. 선택 표시는
-    // [_ConceptNode]가 스스로 구독한다.
+    // [_ConceptNode]가, 상세 카드는 [_NodeDetailOverlay]가 스스로 구독한다.
 
-    // DTO → graphview 모델 변환. 엣지가 가리키는 노드가 실제로 존재할 때만
-    // 연결한다(서버가 아직 없는 노드를 참조해도 렌더가 깨지지 않게).
-    final gvGraph = gv.Graph()..isTree = false;
-    final nodesById = <String, gv.Node>{
-      for (final n in graph.nodes) n.id: gv.Node.Id(n.id),
-    };
-    for (final node in nodesById.values) {
-      gvGraph.addNode(node);
-    }
-    _nodesById = nodesById;
+    final origin = layout.bounds.topLeft;
+    final canvasSize = layout.bounds.size;
+
+    // 엣지 — 중심에서 중심으로 잇는다(선은 불투명한 노드에 가려 상자 가장자리에서
+    // 나오는 것처럼 보인다). 가리키는 노드가 실제로 있을 때만 그린다.
+    final lines = <_EdgeLine>[];
     for (final e in graph.edges) {
-      final from = nodesById[e.from];
-      final to = nodesById[e.to];
-      if (from == null || to == null) continue;
-      // 기사→개념 줄은 개념 사이의 관계선보다 연하게. 지도의 주인공은 개념이고
-      // 기사선은 출처를 훑을 때만 눈에 들어오면 된다.
+      final a = layout.centers[e.from];
+      final b = layout.centers[e.to];
+      if (a == null || b == null) continue;
+      // 기사→개념 줄은 개념 사이의 관계선보다 연하게.
       final isSource = e.type == articleEdgeType;
-      gvGraph.addEdge(
-        from,
-        to,
-        paint: Paint()
-          ..color = isSource
-              ? AppColors.pinkMuted.withValues(alpha: 0.45)
-              : e.type == EdgeType.prereq
-                  ? const Color(0xFFD9D2C8)
-                  : const Color(0xFFE8E2D8)
-          ..strokeWidth = isSource
-              ? 1.0
-              : e.type == EdgeType.prereq
-                  ? 1.6
-                  : 1.0
-          ..style = PaintingStyle.stroke,
-      );
+      final color = isSource
+          ? AppColors.pinkMuted.withValues(alpha: 0.45)
+          : e.type == EdgeType.prereq
+              ? const Color(0xFFD9D2C8)
+              : const Color(0xFFE8E2D8);
+      final width = isSource
+          ? 1.0
+          : e.type == EdgeType.prereq
+              ? 1.6
+              : 1.0;
+      lines.add(_EdgeLine(a - origin, b - origin, color, width));
     }
 
-    final algorithm = RadialClusterAlgorithm(layout);
-    Widget nodeBuilder(gv.Node gvNode) {
-      final id = gvNode.key!.value as String;
-      final node = graph.nodeById(id);
-      if (node == null) return const SizedBox.shrink();
-      if (isArticleNodeId(id)) return _ArticleNode(node: node);
-      return _ConceptNode(node: node, keepNodesAlive: _keepNodesAlive);
+    // 노드 — 중심 좌표에 FractionalTranslation 으로 자기 중심을 맞춘다(노드 크기를
+    // 몰라도 정확히 중앙에 온다).
+    final nodeWidgets = <Widget>[];
+    for (final node in graph.nodes) {
+      final center = layout.centers[node.id];
+      if (center == null) continue;
+      final p = center - origin;
+      nodeWidgets.add(Positioned(
+        left: p.dx,
+        top: p.dy,
+        child: FractionalTranslation(
+          translation: const Offset(-0.5, -0.5),
+          child: isArticleNodeId(node.id)
+              ? _ArticleNode(node: node, center: center)
+              : _ConceptNode(node: node, center: center),
+        ),
+      ));
     }
 
     return Stack(
       children: [
         Positioned.fill(
-          child: gv.GraphView.builder(
-            graph: gvGraph,
-            controller: _controller,
-            algorithm: algorithm,
-            animated: false,
-            // centerGraph는 쓰지 않는다 — 켜면 graphview가 캔버스를 잘못 잡아
-            // 노드가 아예 보이지 않는다. 화면 맞춤은 zoomToFit 이 맡는다.
-            builder: nodeBuilder,
-          )..delegate = _AllNodesDelegate(
-              graph: gvGraph,
-              algorithm: algorithm,
-              builder: nodeBuilder,
-              controller: _controller,
+          child: InteractiveViewer(
+            transformationController: _transformController,
+            constrained: false,
+            // 노드 위 드래그는 노드의 pan 이 제스처 아레나에서 이겨(빈 곳에서만
+            // 캔버스가 팬된다), panEnabled 를 따로 끄지 않아도 배경이 안 딸려온다.
+            boundaryMargin: const EdgeInsets.all(double.infinity),
+            minScale: 0.05,
+            maxScale: 4,
+            child: SizedBox(
+              width: canvasSize.width,
+              height: canvasSize.height,
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Positioned.fill(
+                    child: CustomPaint(painter: _EdgePainter(lines)),
+                  ),
+                  ...nodeWidgets,
+                ],
+              ),
             ),
+          ),
         ),
         Positioned.fill(
           child: _NodeDetailOverlay(
             graph: graph,
-            nodesById: _nodesById,
+            centers: layout.centers,
+            origin: origin,
             transformController: _transformController,
           ),
         ),
@@ -290,38 +278,80 @@ class _ThoughtMapViewState extends ConsumerState<ThoughtMapView>
   }
 }
 
+/// 엣지를 중심-중심 직선으로 그리는 페인터. 노드 뒤에 깔린다.
+class _EdgeLine {
+  const _EdgeLine(this.a, this.b, this.color, this.strokeWidth);
+
+  final Offset a;
+  final Offset b;
+  final Color color;
+  final double strokeWidth;
+}
+
+class _EdgePainter extends CustomPainter {
+  const _EdgePainter(this.lines);
+
+  final List<_EdgeLine> lines;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    for (final l in lines) {
+      canvas.drawLine(
+        l.a,
+        l.b,
+        Paint()
+          ..color = l.color
+          ..strokeWidth = l.strokeWidth
+          ..style = PaintingStyle.stroke
+          ..isAntiAlias = true,
+      );
+    }
+  }
+
+  // build 마다 새 리스트가 오므로(수동 위치·그래프 변경 시) 그때 다시 그린다.
+  // 팬·줌은 부모 Transform 이 합성으로 처리하므로 여기선 다시 그릴 필요가 없다.
+  @override
+  bool shouldRepaint(_EdgePainter old) => !identical(old.lines, lines);
+}
+
 /// 선택된 노드 옆에 뜨는 상세 카드.
 ///
 /// 좌하단 고정이 아니라 **노드를 가리지 않는 자리**에 뜬다 — 오른쪽에 공간이
 /// 있으면 오른쪽, 없으면 왼쪽. 팬·줌으로 캔버스가 움직이면 카드도 노드에
-/// 딸려 가야 하므로, 레이아웃 좌표([gv.Node.position], 팬·줌과 무관하게 고정)를
-/// 매 프레임 [transformController]의 현재 행렬로 변환해 화면 좌표를 다시 구한다.
+/// 딸려 가야 하므로, 노드의 중심 좌표(팬·줌과 무관하게 고정)를 매 프레임
+/// [transformController]의 현재 행렬로 변환해 화면 좌표를 다시 구한다.
+///
+/// 노드의 정확한 크기는 측정하지 않고 넉넉히 어림한다([_nodeHalfW]/[_nodeHalfH]) —
+/// 카드가 노드를 안 덮고 옆에 서기만 하면 되므로 이 정도면 충분하다.
 class _NodeDetailOverlay extends ConsumerWidget {
   const _NodeDetailOverlay({
     required this.graph,
-    required this.nodesById,
+    required this.centers,
+    required this.origin,
     required this.transformController,
   });
 
   final Graph graph;
-  final Map<String, gv.Node> nodesById;
+  final Map<String, Offset> centers;
+  final Offset origin;
   final TransformationController transformController;
 
   static const _cardWidth = 320.0;
   static const _cardMaxHeight = 420.0;
   static const _gap = 16.0;
+  static const _nodeHalfW = 95.0;
+  static const _nodeHalfH = 22.0;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final selectedId = ref.watch(selectedNodeIdProvider);
     // 기사 노드는 개념이 아니다 — 눌러도 개념 상세를 띄우지 않는다.
-    // (기사 노드는 자기 탭에서 원문을 여는 것으로 끝난다.)
     if (selectedId == null || isArticleNodeId(selectedId)) {
       return const SizedBox.shrink();
     }
     final node = graph.nodeById(selectedId);
-    final gvNode = nodesById[selectedId];
-    if (node == null || gvNode == null) return const SizedBox.shrink();
+    final center = centers[selectedId];
+    if (node == null || center == null) return const SizedBox.shrink();
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -329,9 +359,14 @@ class _NodeDetailOverlay extends ConsumerWidget {
           animation: transformController,
           builder: (context, _) {
             final viewport = constraints.biggest;
-            final nodeRect = MatrixUtils.transformRect(
-              transformController.value,
-              gvNode.position & gvNode.size,
+            final m = transformController.value;
+            final scale = m.getMaxScaleOnAxis();
+            final screenCenter =
+                MatrixUtils.transformPoint(m, center - origin);
+            final nodeRect = Rect.fromCenter(
+              center: screenCenter,
+              width: _nodeHalfW * 2 * scale,
+              height: _nodeHalfH * 2 * scale,
             );
 
             // 오른쪽에 카드가 들어갈 자리가 있으면 오른쪽에, 아니면 왼쪽에 —
@@ -448,64 +483,38 @@ class _CanvasFab extends StatelessWidget {
   }
 }
 
-/// 엣지에 걸리지 않은 노드까지 그리게 하는 델리게이트.
-///
-/// graphview 1.5.1 의 `GraphChildDelegate.getVisibleGraphOnly()` 는 그릴 그래프를
-/// **엣지를 훑으며** 만든다.
-///
-/// ```dart
-/// for (final edge in graph.edges) { ... visibleGraph.addEdgeS(edge); }
-/// if (visibleGraph.nodes.isEmpty && graph.nodes.isNotEmpty) {
-///   visibleGraph.addNode(graph.nodes.first);   // 노드 1개짜리 응급 처치
-/// }
-/// ```
-///
-/// 그래서 엣지가 하나도 안 걸린 노드는 조용히 빠진다(위젯이 아예 만들어지지 않아
-/// 화면 밖으로 밀린 것과도 구분이 안 된다). 레이아웃 알고리즘 자체는 고립 노드를
-/// 잘 배치하므로 — Sugiyama 는 이들을 최상단 층에 나란히 놓는다 — 여기서 노드
-/// 목록만 채워 넣으면 된다.
-class _AllNodesDelegate extends gv.GraphChildDelegate {
-  _AllNodesDelegate({
-    required super.graph,
-    required super.algorithm,
-    required super.builder,
-    required super.controller,
-  });
-
-  @override
-  gv.Graph getVisibleGraphOnly() {
-    final visible = super.getVisibleGraphOnly();
-    for (final node in graph.nodes) {
-      // 상위 구현이 노드가 0개일 때 넣어 두는 응급 노드와 중복되지 않게 확인한다.
-      if (isNodeVisible(node) && !visible.nodes.contains(node)) {
-        visible.addNode(node);
-      }
-    }
-    return visible;
-  }
-}
-
 /// 그래프 노드 하나. 색으로 이해상태를, 모양으로 선행개념 여부를 나타낸다.
 ///
-/// 선택 여부를 자기가 구독하되, **선택돼도 크기가 변하지 않게** 만든다.
-/// 테두리 두께가 바뀌면 노드 크기가 달라져 Sugiyama 레이아웃이 다시 돌고
-/// 지도 전체가 튄다. 그래서 두께는 고정하고 색과 그림자(레이아웃에 영향 없음)로만
-/// 선택을 표시한다.
+/// 선택 여부를 자기가 구독하되, **선택돼도 크기가 변하지 않게** 만든다 — 테두리
+/// 두께를 고정하고 색과 그림자로만 선택을 표시한다.
 ///
-/// 짧게 누르면(탭) 노드가 선택되고, 길게 눌러 끌면(드래그) "탐색" 탭의 키워드로
-/// 담긴다. 두 액션은 완전히 독립적이다 — 탭이 탐색 선택까지 건드리면 지도를
-/// 둘러보다가 의도치 않게 키워드가 쌓인다.
-class _ConceptNode extends ConsumerWidget {
-  const _ConceptNode({required this.node, required this.keepNodesAlive});
+/// 제스처가 세 갈래다:
+///   - **탭** — 노드를 선택한다(상세 카드).
+///   - **바로 끌기(pan)** — 노드를 지도 위에서 옮긴다. 실시간으로
+///     [nodePositionsProvider]에 반영되고, 놓으면 영구 저장된다.
+///   - **길게 눌러 끌기** — "탐색" 탭의 키워드로 담긴다([LongPressDraggable]).
+/// 바로 끌기는 즉시 움직임으로 승부가 나고, 가만히 눌러 있으면 롱프레스가
+/// 이겨서 탐색 드래그가 시작된다 — 둘은 자연히 갈린다.
+class _ConceptNode extends ConsumerStatefulWidget {
+  const _ConceptNode({required this.node, required this.center});
 
   final GraphNode node;
 
-  /// 드래그가 시작·종료될 때 지도 전체를 살려 두기 위한 신호([_keepNodesAlive]).
-  /// 두 시점 모두 이 노드만 다시 그려지므로 둘 다 걸어야 한다.
-  final VoidCallback keepNodesAlive;
+  /// 이 노드의 현재 중심(절대 좌표). 드래그 시작점으로 삼는다.
+  final Offset center;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_ConceptNode> createState() => _ConceptNodeState();
+}
+
+class _ConceptNodeState extends ConsumerState<_ConceptNode> {
+  /// 드래그 중 누적되는 중심 좌표(절대). 리빌드로 widget.center 가 갱신돼도
+  /// 우리 누적값을 기준으로 이어 간다.
+  Offset? _dragCenter;
+
+  @override
+  Widget build(BuildContext context) {
+    final node = widget.node;
     final style = nodeStyleOf(node);
     final selected =
         ref.watch(selectedNodeIdProvider.select((id) => id == node.id));
@@ -547,10 +556,10 @@ class _ConceptNode extends ConsumerWidget {
       ),
     );
 
+    final positions = ref.read(nodePositionsProvider.notifier);
+
     return LongPressDraggable<String>(
       data: node.id,
-      onDragStarted: keepNodesAlive,
-      onDragEnd: (_) => keepNodesAlive(),
       feedback: Material(
         color: Colors.transparent,
         child: Container(
@@ -572,8 +581,27 @@ class _ConceptNode extends ConsumerWidget {
       ),
       childWhenDragging: Opacity(opacity: 0.35, child: content),
       child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
         onTap: () => ref.read(selectedNodeIdProvider.notifier).state =
             selected ? null : node.id,
+        onPanStart: (_) => _dragCenter = widget.center,
+        onPanUpdate: (details) {
+          // details.delta 는 변환된 캔버스 안이라 이미 레이아웃 좌표계다
+          // (스케일 보정 불필요). 절대 중심에 그대로 더한다.
+          final next = (_dragCenter ?? widget.center) + details.delta;
+          _dragCenter = next;
+          positions.drag(node.id, next);
+        },
+        onPanEnd: (_) {
+          positions.commit(node.id);
+          _dragCenter = null;
+        },
+        onPanCancel: () {
+          if (_dragCenter != null) {
+            positions.commit(node.id);
+            _dragCenter = null;
+          }
+        },
         child: content,
       ),
     );
@@ -582,17 +610,30 @@ class _ConceptNode extends ConsumerWidget {
 
 /// 기사 노드. 개념 노드와 **다르게 생겨야 한다** — 이해 대상이 아니기 때문이다.
 ///
-/// 개념 노드와 세 가지가 다르다:
+/// 개념 노드와 다른 점:
 ///   - 선택되지 않는다. 상세 패널은 개념을 설명하는 자리다.
 ///   - 탐색 탭으로 끌어다 놓을 수 없다. 기사는 개념이 아니라 키워드가 못 된다.
 ///   - 탭하면 기사가 브라우저에서 열린다(URL 이 있을 때만).
-class _ArticleNode extends StatelessWidget {
-  const _ArticleNode({required this.node});
+/// 반면 **바로 끌면 개념 노드처럼 지도 위에서 옮겨진다**(위치 영구 저장).
+class _ArticleNode extends ConsumerStatefulWidget {
+  const _ArticleNode({required this.node, required this.center});
 
   final GraphNode node;
 
-  SourceArticle? get _article =>
-      node.sourceArticles.isEmpty ? null : node.sourceArticles.first;
+  /// 이 노드의 현재 중심(절대 좌표). 드래그 시작점으로 삼는다.
+  final Offset center;
+
+  @override
+  ConsumerState<_ArticleNode> createState() => _ArticleNodeState();
+}
+
+class _ArticleNodeState extends ConsumerState<_ArticleNode> {
+  /// 드래그 중 누적되는 중심 좌표(절대). [_ConceptNodeState] 와 같은 방식.
+  Offset? _dragCenter;
+
+  SourceArticle? get _article => widget.node.sourceArticles.isEmpty
+      ? null
+      : widget.node.sourceArticles.first;
 
   Future<void> _open() async {
     final url = _article?.url ?? '';
@@ -603,7 +644,9 @@ class _ArticleNode extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final node = widget.node;
     final hasUrl = (_article?.url ?? '').isNotEmpty;
+    final positions = ref.read(nodePositionsProvider.notifier);
 
     final content = Container(
       constraints: const BoxConstraints(maxWidth: 210),
@@ -638,15 +681,39 @@ class _ArticleNode extends StatelessWidget {
       ),
     );
 
-    if (!hasUrl) return content;
+    // 제스처(탭=열기, 바로 끌기=이동)를 가장 안쪽에 둔다. Tooltip 을 제스처
+    // 안에 넣으면 Tooltip 이 얹는 롱프레스 인식기가 pan 승부에 끼어들어
+    // 드래그가 씹힌다 — 그래서 Tooltip 은 바깥으로 뺀다.
+    final interactive = MouseRegion(
+      cursor: hasUrl ? SystemMouseCursors.click : SystemMouseCursors.grab,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: hasUrl ? _open : null,
+        onPanStart: (_) => _dragCenter = widget.center,
+        onPanUpdate: (details) {
+          final next = (_dragCenter ?? widget.center) + details.delta;
+          _dragCenter = next;
+          positions.drag(node.id, next);
+        },
+        onPanEnd: (_) {
+          positions.commit(node.id);
+          _dragCenter = null;
+        },
+        onPanCancel: () {
+          if (_dragCenter != null) {
+            positions.commit(node.id);
+            _dragCenter = null;
+          }
+        },
+        child: content,
+      ),
+    );
 
+    if (!hasUrl) return interactive;
     return Tooltip(
       message: '기사 열기 — ${node.concept}',
       waitDuration: const Duration(milliseconds: 400),
-      child: MouseRegion(
-        cursor: SystemMouseCursors.click,
-        child: GestureDetector(onTap: _open, child: content),
-      ),
+      child: interactive,
     );
   }
 }

@@ -53,6 +53,16 @@ class AppDatabase extends _$AppDatabase {
           await customStatement(
             'CREATE TABLE IF NOT EXISTS xp_visits (day TEXT NOT NULL PRIMARY KEY)',
           );
+          // 사용자가 손으로 옮긴 노드 위치. 그래프 계약(서버) 밖의 순수 로컬
+          // 데이터라 XP와 같은 이유로 raw SQL로 얹는다(생성 코드 불변). 좌표는
+          // 방사형 레이아웃과 같은 **중심 좌표**(radial_cluster_layout.dart)다.
+          await customStatement('''
+            CREATE TABLE IF NOT EXISTS node_positions (
+              node_id TEXT NOT NULL PRIMARY KEY,
+              dx REAL NOT NULL,
+              dy REAL NOT NULL
+            )
+          ''');
         },
       );
 
@@ -385,6 +395,50 @@ class AppDatabase extends _$AppDatabase {
     return '${t.year}-$m-$d';
   }
 
+  // ── 노드 위치(수동 배치) ────────────────────────────────────
+  //
+  // 사용자가 손으로 옮긴 노드의 **중심 좌표**. 그래프 계약 밖 로컬 데이터라
+  // XP와 같은 raw SQL 테이블(node_positions)을 쓴다. 방사형 자동 배치 위에
+  // 덮어씌워지고, 동기화로 그래프가 바뀌어도 남은 노드의 자리는 유지된다.
+
+  /// 저장된 모든 수동 위치를 읽는다(노드 id → 중심 좌표 dx/dy).
+  Future<List<({String id, double dx, double dy})>> loadNodePositions() async {
+    final rows =
+        await customSelect('SELECT node_id, dx, dy FROM node_positions').get();
+    return rows
+        .map((r) => (
+              id: r.read<String>('node_id'),
+              dx: r.read<double>('dx'),
+              dy: r.read<double>('dy'),
+            ))
+        .toList();
+  }
+
+  /// 노드 하나의 수동 위치를 저장한다(있으면 덮어쓴다).
+  Future<void> setNodePosition(String nodeId, double dx, double dy) async {
+    await customInsert(
+      'INSERT OR REPLACE INTO node_positions (node_id, dx, dy) VALUES (?, ?, ?)',
+      variables: [
+        Variable<String>(nodeId),
+        Variable<double>(dx),
+        Variable<double>(dy),
+      ],
+    );
+  }
+
+  /// 노드 하나의 수동 위치를 지운다(방사형 자동 배치로 되돌아간다).
+  Future<void> clearNodePosition(String nodeId) async {
+    await customStatement(
+      'DELETE FROM node_positions WHERE node_id = ?',
+      [nodeId],
+    );
+  }
+
+  /// 모든 수동 위치를 지운다.
+  Future<void> clearAllNodePositions() async {
+    await customStatement('DELETE FROM node_positions');
+  }
+
   /// 로그아웃 시 로컬 학습 데이터를 비운다.
   Future<void> wipe() async {
     await transaction(() async {
@@ -396,6 +450,8 @@ class AppDatabase extends _$AppDatabase {
       // XP도 학습 데이터다 — 계정이 바뀌면 함께 비운다.
       await customStatement('DELETE FROM xp_events');
       await customStatement('DELETE FROM xp_visits');
+      // 수동 배치도 그 계정의 지도에 속한다 — 함께 비운다.
+      await customStatement('DELETE FROM node_positions');
     });
   }
 }

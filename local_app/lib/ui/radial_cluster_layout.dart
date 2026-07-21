@@ -5,22 +5,20 @@
 ///   level2(선행의 선행) …
 /// 안쪽 고리일수록 기사에 가깝고, 바깥으로 갈수록 더 근본적인 선행 개념이 온다.
 ///
-/// **왜 커스텀 레이아웃인가.** graphview 1.5.1 에 [RadialTreeLayoutAlgorithm] 이
-/// 있지만 그것은 (1) 엣지 방향을 그대로 부모→자식으로 쓰고 (2) 여러 뿌리를 하나의
-/// 중심으로 모은다. 우리는 (1) 선행 엣지가 `선행→후행`이라 방사 바깥 방향과 반대이고
-/// (2) 기사가 여러 개일 때 **기사마다 독립된 태양**이 되길 원한다. 그래서 여기서
-/// 좌표를 직접 계산하고, graphview 에는 "이미 계산된 좌표를 노드에 꽂기만 하는"
-/// 얇은 알고리즘([RadialClusterAlgorithm])만 넘긴다.
+/// **왜 커스텀 레이아웃인가.** 방사형 트리 배치는 (1) 엣지 방향을 그대로
+/// 부모→자식으로 쓰고 (2) 여러 뿌리를 하나의 중심으로 모으는 것이 보통이다.
+/// 우리는 (1) 선행 엣지가 `선행→후행`이라 방사 바깥 방향과 반대이고 (2) 기사가
+/// 여러 개일 때 **기사마다 독립된 태양**이 되길 원한다. 그래서 여기서 좌표를
+/// 직접 계산하고, 렌더러([ThoughtMapView])는 이 중심 좌표를 그대로 그린다.
 ///
-/// 좌표는 노드 크기와 무관한 **중심 좌표**로 계산한다. graphview 의 노드 좌표는
-/// 좌상단 기준이라, 실제 크기가 측정되는 알고리즘 실행 시점에 중심→좌상단으로
-/// 바꾼다([RadialClusterAlgorithm.run]).
+/// 좌표는 노드 크기와 무관한 **중심 좌표**다. 노드는 이 좌표에 자기 중심을 맞춰
+/// 배치되고(렌더러가 FractionalTranslation 으로 반너비만큼 당긴다), 엣지도
+/// 중심에서 중심으로 잇는다 — 선은 불투명한 노드 상자에 가려 상자 가장자리에서
+/// 나오는 것처럼 보인다.
 library;
 
 import 'dart:math';
 import 'dart:ui';
-
-import 'package:graphview/GraphView.dart' as gv;
 
 import '../data/dto/graph.dart';
 import 'article_nodes.dart';
@@ -55,6 +53,41 @@ class RadialLayout {
   final Rect bounds;
 
   bool get isEmpty => centers.isEmpty;
+
+  /// 자동 배치 위에 **수동 위치**를 덮어씌운 새 레이아웃.
+  ///
+  /// [overrides] 는 노드 id → 사용자가 옮긴 중심 좌표다. 지금 그래프에 있는
+  /// 노드만 반영하고(사라진 노드의 옛 좌표는 버린다), 경계도 옮긴 노드를 담게
+  /// 다시 잡는다(줌 맞춤이 화면 밖으로 새지 않게).
+  RadialLayout merged(Map<String, Offset> overrides) {
+    if (overrides.isEmpty) return this;
+    final next = Map<String, Offset>.of(centers);
+    var changed = false;
+    overrides.forEach((id, pos) {
+      if (next.containsKey(id)) {
+        next[id] = pos;
+        changed = true;
+      }
+    });
+    if (!changed) return this;
+
+    var minX = double.infinity, minY = double.infinity;
+    var maxX = double.negativeInfinity, maxY = double.negativeInfinity;
+    for (final c in next.values) {
+      minX = min(minX, c.dx);
+      minY = min(minY, c.dy);
+      maxX = max(maxX, c.dx);
+      maxY = max(maxY, c.dy);
+    }
+    // 원래 경계가 쥔 여백(nodePadding)을 그대로 유지한다.
+    final pad = (bounds.left - centers.values.fold<double>(
+            double.infinity, (m, c) => min(m, c.dx)))
+        .abs();
+    return RadialLayout(
+      next,
+      Rect.fromLTRB(minX - pad, minY - pad, maxX + pad, maxY + pad),
+    );
+  }
 }
 
 double _ringRadius(int ring, RadialLayoutConfig cfg) =>
@@ -239,47 +272,4 @@ RadialLayout computeRadialLayout(
   final bounds = Rect.fromLTRB(minX - pad, minY - pad, maxX + pad, maxY + pad);
 
   return RadialLayout(centers, bounds);
-}
-
-/// 미리 계산된 [RadialLayout.centers] 좌표를 graphview 노드에 그대로 꽂는 알고리즘.
-///
-/// 레이아웃 계산은 [computeRadialLayout] 이 다 했고, 여기서는 노드 크기를 알 수 있는
-/// 실행 시점에 중심 좌표를 좌상단 좌표로 바꿔 넣기만 한다. 엣지는 기본 직선 렌더러로
-/// 그린다(화살표 없음 — 방향은 이미 안쪽/바깥쪽 위치로 읽힌다).
-class RadialClusterAlgorithm extends gv.Algorithm {
-  RadialClusterAlgorithm(this.layout, {gv.EdgeRenderer? renderer}) {
-    this.renderer = renderer ?? gv.ArrowEdgeRenderer(noArrow: true);
-  }
-
-  final RadialLayout layout;
-
-  @override
-  Size run(gv.Graph? graph, double shiftX, double shiftY) {
-    if (graph == null || graph.nodes.isEmpty) return Size.zero;
-
-    var minX = double.infinity, minY = double.infinity;
-    var maxX = double.negativeInfinity, maxY = double.negativeInfinity;
-
-    for (final node in graph.nodes) {
-      final id = node.key!.value as String;
-      final center = layout.centers[id] ?? Offset.zero;
-      final left = center.dx - node.width / 2 + shiftX;
-      final top = center.dy - node.height / 2 + shiftY;
-      node.position = Offset(left, top);
-
-      minX = min(minX, left);
-      minY = min(minY, top);
-      maxX = max(maxX, left + node.width);
-      maxY = max(maxY, top + node.height);
-    }
-
-    if (minX.isInfinite) return Size.zero;
-    return Size(maxX - minX, maxY - minY);
-  }
-
-  @override
-  void init(gv.Graph? graph) {}
-
-  @override
-  void setDimensions(double width, double height) {}
 }
