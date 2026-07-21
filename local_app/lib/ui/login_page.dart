@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/app_exception.dart';
 import '../core/config.dart';
 import '../providers/providers.dart';
-import 'widgets/logo_mark.dart';
 
 /// 로컬 앱 전용 로그인. 익스텐션과 토큰을 공유하지 않고 독립 로그인한다
 /// (명세 §4.1). 로그인 요청에는 `client:"local"`이 함께 나간다.
@@ -56,7 +55,13 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Center(child: LogoLockup(iconSize: 40, textSize: 28)),
+                  Text(
+                    '프로버',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.displaySmall?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                  ),
                   const SizedBox(height: 8),
                   Text(
                     '내가 무엇을 모르는지 보여주는 생각 지도',
