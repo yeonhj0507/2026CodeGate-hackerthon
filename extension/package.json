@@ -1,0 +1,29 @@
+{
+  "name": "prober-extension",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "qa:anchor": "rolldown qa/anchor-qa.ts -o qa/dist/anchor-qa.mjs --format esm && node qa/dist/anchor-qa.mjs",
+    "qa:scrap": "rolldown qa/scrap-qa.ts -o qa/dist/scrap-qa.mjs --format esm --platform node && node qa/dist/scrap-qa.mjs",
+    "qa:session": "rolldown qa/session-qa.ts -o qa/dist/session-qa.mjs --format esm --platform node && node qa/dist/session-qa.mjs"
+  },
+  "dependencies": {
+    "@mozilla/readability": "^0.6.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "zustand": "^5.0.14"
+  },
+  "devDependencies": {
+    "@crxjs/vite-plugin": "^2.7.1",
+    "@types/chrome": "^0.2.2",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^6.0.3",
+    "typescript": "^5.9.3",
+    "vite": "^8.1.5"
+  }
+}
