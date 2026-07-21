@@ -12,7 +12,8 @@
     "qa:extractor": "rolldown qa/extractor-qa.ts -o qa/dist/extractor-qa.mjs --format esm --platform node --external jsdom && node qa/dist/extractor-qa.mjs",
     "qa:scrap": "rolldown qa/scrap-qa.ts -o qa/dist/scrap-qa.mjs --format esm --platform node --transform.define \"import.meta.env:{}\" && node qa/dist/scrap-qa.mjs",
     "qa:session": "rolldown qa/session-qa.ts -o qa/dist/session-qa.mjs --format esm --platform node && node qa/dist/session-qa.mjs",
-    "qa:relations": "rolldown qa/relations-qa.ts -o qa/dist/relations-qa.mjs --format esm --platform node && node qa/dist/relations-qa.mjs"
+    "qa:relations": "rolldown qa/relations-qa.ts -o qa/dist/relations-qa.mjs --format esm --platform node && node qa/dist/relations-qa.mjs",
+    "qa:quiz-stream": "rolldown qa/quiz-stream-qa.ts -o qa/dist/quiz-stream-qa.mjs --format esm --platform node --transform.define \"import.meta.env:{}\" && node qa/dist/quiz-stream-qa.mjs"
   },
   "dependencies": {
     "@mozilla/readability": "^0.6.0",

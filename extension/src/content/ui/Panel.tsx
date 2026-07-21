@@ -6,8 +6,10 @@
 // (background 호출은 content orchestrator가 연결 — T=3 align).
 // =============================================================================
 
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
+import { useQuizFeed } from '../quiz-feed'
 import { useSession } from '../session'
+import { ProberLogo } from './ProberLogo'
 import { QuestionView } from './QuestionView'
 
 interface Props {
@@ -22,24 +24,8 @@ export function Panel({ onEnd }: Props) {
   const submitAnswer = useSession((s) => s.submitAnswer)
   const dismissExplanation = useSession((s) => s.dismissExplanation)
   const flushResults = useSession((s) => s.flushResults)
-
-  // 정답으로 IDLE 복귀 시 짧게 확인 토스트를 띄운다(별도 phase 없이 UI 로컬 처리).
-  const [toast, setToast] = useState(false)
-  const prevLen = useRef(0)
-  useEffect(() => {
-    if (results.length === 0) {
-      prevLen.current = 0
-      return
-    }
-    if (results.length > prevLen.current) {
-      prevLen.current = results.length
-      if (results[results.length - 1].correct) {
-        setToast(true)
-        const t = setTimeout(() => setToast(false), 1400)
-        return () => clearTimeout(t)
-      }
-    }
-  }, [results])
+  const streaming = useQuizFeed((s) => s.streaming)
+  const ready = useQuizFeed((s) => s.ready)
 
   const solved = results.length
   const correct = results.filter((r) => r.correct).length
@@ -63,20 +49,29 @@ export function Panel({ onEnd }: Props) {
     <div className="root">
       <header className="header">
         <div className="brand">
-          <span className="dot" />
-          <span>프로버</span>
+          <ProberLogo size={20} />
+          <span className="wordmark">prober</span>
         </div>
-        {!ended && solved > 0 && (
-          <span className="progress">
-            맞힘 {correct} / 푼 문항 {solved}
-          </span>
-        )}
         {!ended && (
           <button type="button" className="end-btn" onClick={handleEnd}>
             학습 종료
           </button>
         )}
       </header>
+
+      {!ended && solved > 0 && (
+        <div className="progress-row">
+          <div className="progress-track">
+            <div
+              className="progress-fill"
+              style={{ width: `${(correct / solved) * 100}%` }}
+            />
+          </div>
+          <span className="progress-label">
+            {correct}/{solved}
+          </span>
+        </div>
+      )}
 
       <div className="body">
         {ended ? (
@@ -91,18 +86,28 @@ export function Panel({ onEnd }: Props) {
             <div className="ended-note">진단 결과를 저장했어요.</div>
           </div>
         ) : phase === 'IDLE' || !active ? (
-          <div className="idle">
-            <span className="emoji">{toast ? '✅' : '📖'}</span>
-            {toast ? (
-              <div>정답이에요! 개념을 이해했어요.</div>
-            ) : (
+          // 낼 문항이 지금 없다. 아직 만드는 중이면 그 사실을 말해 준다 —
+          // 읽는 속도가 생성 속도를 앞지른 상태이고, 안 알려주면 "질문이 안 나온다"로 읽힌다.
+          streaming ? (
+            <div className="idle">
+              <span className="spinner" aria-hidden="true" />
+              <div>
+                읽는 속도가 더 빠르네요.
+                <br />
+                다음 질문을 만들고 있어요.
+              </div>
+              {ready > 0 && <div className="feed-note">지금까지 {ready}개 준비됨</div>}
+            </div>
+          ) : (
+            <div className="idle">
+              <span className="emoji">📖</span>
               <div>
                 기사를 읽어 내려가면
                 <br />
                 놓치기 쉬운 지점에서 질문이 나타나요.
               </div>
-            )}
-          </div>
+            </div>
+          )
         ) : (
           <QuestionView
             key={activeKey}

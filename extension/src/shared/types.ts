@@ -111,6 +111,30 @@ export interface ScrapResponse {
   buffered?: number   // 이 요청으로 버퍼에 쌓인 결과 개수(서버가 함께 준다)
 }
 
+// ─── 퀴즈 스트리밍 (content ↔ background, 포트) ─────────────────────────────
+
+/**
+ * 퀴즈 스트림 전용 포트 이름.
+ *
+ * 일반 sendMessage 는 응답이 **한 번**뿐이라 문항을 하나씩 흘려보낼 수 없다.
+ * 포트를 쓰면 background 가 도착하는 대로 postMessage 할 수 있고, 연결이 살아 있는
+ * 동안 MV3 서비스워커가 잠들지 않는다는 이점도 있다(생성이 1분 가까이 걸린다).
+ */
+export const QUIZ_PORT = 'prober-quiz'
+
+/** content → background. 포트 연결 직후 1회. */
+export interface StartQuizStream {
+  type: 'START_QUIZ_STREAM'
+  title: string
+  body: string
+}
+
+/** background → content. QUIZ_DONE 또는 QUIZ_STREAM_ERROR 로 끝난다. */
+export type QuizStreamEvent =
+  | { type: 'QUIZ_ITEM'; quiz: Quiz }
+  | { type: 'QUIZ_DONE'; total: number }
+  | { type: 'QUIZ_STREAM_ERROR'; error: string }
+
 // ─── Chrome Runtime 메시지 (content ↔ background) ───────────────────────────
 
 /**
@@ -153,7 +177,7 @@ export interface ActiveQuestion {
 
 /** session.ts가 ui/에 노출하는 상태 (zustand store shape). */
 export interface SessionStore {
-  phase: 'IDLE' | 'ASKING' | 'SHOW_EXPLANATION'
+  phase: 'IDLE' | 'ASKING' | 'SHOW_EXPLANATION' | 'SHOW_CORRECT'
   active: ActiveQuestion | null
   results: ScrapResult[]
 

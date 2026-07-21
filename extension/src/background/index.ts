@@ -3,7 +3,8 @@
 // content script ↔ background 메시지 라우팅. 네트워크 호출은 api.ts에 위임.
 // =============================================================================
 
-import type { ChromeMessage } from '../shared/types'
+import { QUIZ_PORT } from '../shared/types'
+import type { ChromeMessage, QuizStreamEvent, StartQuizStream } from '../shared/types'
 import {
   drainRetryQueue,
   getAuthStatus,
@@ -11,10 +12,35 @@ import {
   logout,
   sendQuizRequest,
   sendScrapRequest,
+  streamQuizRequest,
 } from './api'
 
 // 서비스워커가 (재)시작될 때마다 1회 재시도 큐 drain 시도 (T4.4-b).
 void drainRetryQueue()
+
+// 퀴즈 스트림 전용 포트. sendMessage 는 응답이 한 번뿐이라 문항을 하나씩 흘려보낼 수 없다.
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name !== QUIZ_PORT) return
+
+  // 사용자가 탭을 닫거나 이동하면 포트가 끊긴다. 끊긴 포트에 postMessage 하면
+  // 예외가 나므로, 스트림이 진행 중이어도 더 보내지 않는다.
+  let alive = true
+  port.onDisconnect.addListener(() => {
+    alive = false
+  })
+
+  const send = (event: QuizStreamEvent) => {
+    if (alive) port.postMessage(event)
+  }
+
+  port.onMessage.addListener((message: StartQuizStream) => {
+    if (message.type !== 'START_QUIZ_STREAM') return
+
+    streamQuizRequest(message.title, message.body, (quiz) => send({ type: 'QUIZ_ITEM', quiz }))
+      .then((total) => send({ type: 'QUIZ_DONE', total }))
+      .catch((err: Error) => send({ type: 'QUIZ_STREAM_ERROR', error: err.message }))
+  })
+})
 
 chrome.runtime.onMessage.addListener((message: ChromeMessage, _sender, sendResponse) => {
   switch (message.type) {

@@ -1,4 +1,6 @@
 """FastAPI 앱 진입점 — 담당2(인증)와 담당3(도메인)이 공유하는 하나의 앱."""
+import logging
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -12,6 +14,13 @@ from app.domain.explore.router import router as explore_router
 from app.domain.quiz.router import router as quiz_router
 from app.domain.scrap.router import router as scrap_router
 from app.domain.thoughtmap.router import router as thoughtmap_router
+
+# uvicorn 은 자기 로거만 설정하고 앱 로거는 손대지 않는다. 루트 기본값이 WARNING 이라
+# 이게 없으면 app.* 의 logger.info(LLM 호출 계측 등)가 통째로 사라진다.
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
 
 app = FastAPI(title=settings.app_name)
 

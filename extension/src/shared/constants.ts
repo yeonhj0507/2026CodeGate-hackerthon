@@ -9,6 +9,8 @@ export const API_BASE_URL = 'http://localhost:8000'
 
 export const ENDPOINTS = {
   QUIZ:    `${API_BASE_URL}/quiz`,
+  // 문항이 완성되는 대로 NDJSON 으로 흘러온다. QUIZ 는 이 경로가 막혔을 때의 폴백.
+  QUIZ_STREAM: `${API_BASE_URL}/quiz/stream`,
   SCRAP:   `${API_BASE_URL}/scrap`,
   SIGNUP:  `${API_BASE_URL}/auth/signup`,
   LOGIN:   `${API_BASE_URL}/auth/login`,

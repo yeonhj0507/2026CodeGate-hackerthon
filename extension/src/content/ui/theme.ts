@@ -8,7 +8,20 @@
 
 import { PANEL_WIDTH_PX } from '../../shared/constants'
 
+// 본문은 프리텐다드, "prober" 워드마크만 피그마 지정 폰트(Poppins Bold)를 쓴다.
+// 두 shadow root(Panel/StartPrompt) 각각에 주입해야 폰트가 로드된다 — 호스트
+// 페이지의 CSP가 막으면 조용히 다음 폴백 폰트로 내려간다(치명적이지 않음).
+const FONT_IMPORTS = /* css */ `
+@import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css');
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@700&display=swap');
+`
+
+const FONT_BODY =
+  "'Pretendard', -apple-system, BlinkMacSystemFont, 'Malgun Gothic', Roboto, sans-serif"
+const FONT_WORDMARK = "'Poppins', sans-serif"
+
 export const PANEL_CSS = /* css */ `
+${FONT_IMPORTS}
 :host { all: initial; }
 * { box-sizing: border-box; }
 
@@ -43,8 +56,7 @@ export const PANEL_CSS = /* css */ `
   color: var(--fg);
   border-left: 1px solid var(--line);
   box-shadow: var(--shadow);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Malgun Gothic',
-    Roboto, sans-serif;
+  font-family: ${FONT_BODY};
   font-size: 14px;
   line-height: 1.6;
 }
@@ -59,17 +71,44 @@ export const PANEL_CSS = /* css */ `
   border-bottom: 1px solid var(--line);
   flex: 0 0 auto;
 }
-.brand { display: flex; align-items: center; gap: 8px; font-weight: 700; }
-.brand .dot {
-  width: 20px; height: 20px; border-radius: 6px;
-  background: linear-gradient(135deg, #FF7A93, #E63B5C);
+.brand { display: flex; align-items: center; gap: 8px; }
+.wordmark {
+  font-family: ${FONT_WORDMARK};
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--fg);
 }
-.progress { font-size: 12px; color: var(--muted); }
 .end-btn {
   border: none; background: none; color: var(--accent); font-weight: 700;
   font-size: 12px; cursor: pointer; padding: 4px 6px; border-radius: 6px;
 }
 .end-btn:hover { background: var(--accent-weak); color: var(--accent); }
+
+/* ── 진행률 바(정답률) — 헤더와 분리된 별도 줄. 문항 수 상한이 없어도
+   비율만 채우면 되므로 총 문항 수에 무관하게 항상 정확하다. ── */
+.progress-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 16px;
+  background: var(--surface);
+  flex: 0 0 auto;
+}
+.progress-track {
+  flex: 1 1 auto;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--accent-weak);
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+  transition: width .2s ease-out;
+}
+.progress-label {
+  flex: 0 0 auto;
+  font-size: 11px; font-weight: 600; color: var(--muted);
+}
 
 /* ── 본문 스크롤 영역 ── */
 .body {
@@ -88,6 +127,25 @@ export const PANEL_CSS = /* css */ `
   padding: 24px;
 }
 .idle .emoji { font-size: 30px; }
+
+/* ── 문항 생성 대기 ── */
+/* 읽는 속도가 생성 속도를 앞질렀을 때. 이모지 자리에 스피너가 들어간다. */
+.idle .spinner {
+  width: 26px; height: 26px;
+  border: 2.5px solid var(--line);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: prober-spin 0.9s linear infinite;
+}
+.idle .feed-note { font-size: 12px; opacity: 0.75; }
+
+@keyframes prober-spin { to { transform: rotate(360deg); } }
+
+/* 애니메이션을 끈 사용자에게는 회전 대신 옅은 명멸로 대체한다. */
+@media (prefers-reduced-motion: reduce) {
+  .idle .spinner { animation: prober-pulse 1.6s ease-in-out infinite; }
+  @keyframes prober-pulse { 50% { opacity: 0.35; } }
+}
 
 /* ── 학습 종료(ended) ── */
 .ended .ended-title { font-weight: 700; font-size: 16px; color: var(--fg); }
@@ -170,6 +228,11 @@ export const PANEL_CSS = /* css */ `
   font-weight: 700; color: var(--bad); margin-bottom: 6px; font-size: 13px;
 }
 .explain .text { color: var(--fg); font-size: 13.5px; }
+.explain.explain-ok {
+  border-color: var(--ok-weak);
+  background: var(--ok-weak);
+}
+.explain.explain-ok .banner { color: var(--ok); }
 .next-btn {
   margin-top: 14px; width: 100%;
   padding: 11px 14px; border: none; border-radius: 10px;
@@ -184,13 +247,14 @@ export const PANEL_CSS = /* css */ `
 // 패널과 별도의 shadow root 에 주입된다. 익스텐션 아이콘과 가까운 우측 상단에 뜬다.
 
 export const PROMPT_CSS = /* css */ `
+${FONT_IMPORTS}
 :host { all: initial; }
 * { box-sizing: border-box; }
 
 .prompt {
   --fg: #1a1c1e;
   --muted: #6b7280;
-  --accent: #2563eb;
+  --accent: #E63B5C;
   --bad: #dc2626;
   --bad-weak: #fef2f2;
 
@@ -206,8 +270,7 @@ export const PROMPT_CSS = /* css */ `
   background: #fff;
   box-shadow: 0 10px 34px rgba(0, 0, 0, 0.16);
 
-  font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo",
-    "Malgun Gothic", "맑은 고딕", sans-serif;
+  font-family: ${FONT_BODY};
   color: var(--fg);
   animation: prompt-in 220ms ease-out;
 }
@@ -221,7 +284,13 @@ export const PROMPT_CSS = /* css */ `
   .prompt { animation: none; }
 }
 
-.prompt-brand { font-size: 13px; font-weight: 700; color: var(--accent); }
+.prompt-brand { display: flex; align-items: center; gap: 6px; }
+.prompt-brand .wordmark {
+  font-family: ${FONT_WORDMARK};
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--accent);
+}
 
 .prompt-desc {
   margin: 6px 0 0;
@@ -253,7 +322,7 @@ export const PROMPT_CSS = /* css */ `
   font-weight: 600;
   cursor: pointer;
 }
-.prompt-cta:disabled { background: #cbd5e1; cursor: not-allowed; }
+.prompt-cta:disabled { background: #E6D6DA; cursor: not-allowed; }
 
 .prompt-close {
   position: absolute;

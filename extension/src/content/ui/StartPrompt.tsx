@@ -9,6 +9,7 @@
 // =============================================================================
 
 import { useState } from 'react'
+import { ProberLogo } from './ProberLogo'
 
 export type StartResult = { ok: true } | { ok: false; reason: string }
 
@@ -42,7 +43,10 @@ export function StartPrompt({ onStart, onDismiss }: StartPromptProps) {
         ×
       </button>
 
-      <div className="prompt-brand">프로버</div>
+      <div className="prompt-brand">
+        <ProberLogo size={16} />
+        <span className="wordmark">prober</span>
+      </div>
       <p className="prompt-desc">
         이 기사, 제대로 이해했는지
         <br />
