@@ -71,16 +71,39 @@ async def update_thoughtmap(
         recommend.build_recommendations(db, graph, payload.userContext),
     )
 
-    # 5. 반영된 버퍼 삭제 (명세 §4.3)
-    if consumed_ids:
-        await db.execute(delete(TempScrap).where(TempScrap.id.in_(consumed_ids)))
-    await db.commit()
-
+    # 5. **버퍼는 아직 지우지 않는다.**
+    #
+    # 예전에는 여기서 지우고 커밋했는데, 클라이언트가 응답을 못 받으면(타임아웃·
+    # 네트워크 순단·앱 종료) 진단 결과가 서버에서도 로컬에서도 사라졌다. 서버는
+    # 응답을 다 만들었으니 삭제까지 끝내고, 클라이언트는 아무것도 못 받은 상태가
+    # 되기 때문이다. 실제로 QA 중 한 세션이 통째로 날아갔다.
+    #
+    # 이제 id 만 돌려주고, 로컬 반영을 마친 클라이언트가 `/thoughtmap/ack` 로
+    # 알려줄 때 지운다(명세 §4.3 의 "소비" 시점을 클라이언트 확인 뒤로 미룬 것).
     return ThoughtmapUpdateResponse(
         graph=graph,
         recommendations=recommendations,
         consumedScraps=len(consumed_ids),
+        consumedScrapIds=consumed_ids,
     )
+
+
+async def ack_scraps(db: AsyncSession, user_id: str, scrap_ids: list[str]) -> int:
+    """로컬 반영이 끝난 스크랩을 버퍼에서 지운다.
+
+    `user_id` 로 한 번 더 좁힌다 — 남의 id 를 보내 지우게 두지 않는다.
+    이미 지워진 id 가 섞여 와도 그냥 0건이 더 지워질 뿐이라 재시도가 안전하다.
+    """
+    if not scrap_ids:
+        return 0
+
+    result = await db.execute(
+        delete(TempScrap).where(
+            TempScrap.user_id == user_id, TempScrap.id.in_(scrap_ids)
+        )
+    )
+    await db.commit()
+    return result.rowcount or 0
 
 
 async def _attach_summaries(graph: Graph, llm: LlmProvider) -> None:

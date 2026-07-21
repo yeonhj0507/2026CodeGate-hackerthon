@@ -254,8 +254,29 @@ class Recommendations(Strict):
 class ThoughtmapUpdateResponse(Strict):
     graph: Graph
     recommendations: Recommendations
-    # 이번 동기화로 소비·삭제된 스크랩 수 (디버깅·데모용)
+    # 이번 응답에 반영된 스크랩 수 (디버깅·데모용)
     consumedScraps: int = 0
+
+    # 반영된 스크랩의 id. **아직 서버에 남아 있다.**
+    #
+    # 예전에는 응답을 만든 직후 서버가 지웠는데, 클라이언트가 그 응답을 못 받으면
+    # (타임아웃·네트워크 순단·앱 종료) 진단 결과가 서버에서도 로컬에서도 사라졌다.
+    # 실제로 QA 중 한 세션이 통째로 날아갔다. 이제 로컬 반영을 마친 클라이언트가
+    # `/thoughtmap/ack` 로 이 id 들을 돌려줄 때 지운다.
+    #
+    # ack 이 안 와도 안전하다 — 병합은 같은 스크랩을 두 번 먹어도 결과가 같고
+    # (상태 재적용·출처 중복 제거·OX 미덮어씀), 버퍼는 TTL·행수 상한으로 정리된다.
+    consumedScrapIds: list[str] = Field(default_factory=list)
+
+
+class ScrapAckRequest(Strict):
+    """로컬 반영을 마쳤으니 이 스크랩들을 지워도 된다는 통보."""
+
+    scrapIds: list[str] = Field(default_factory=list)
+
+
+class ScrapAckResponse(Strict):
+    deleted: int = 0
 
 
 # ------------------------------------------------------------ /explore

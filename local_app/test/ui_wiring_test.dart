@@ -319,6 +319,14 @@ class _RecordingApi implements ApiClient {
     recommendations: Recommendations(),
   );
 
+  /// 반영 확인을 받은 스크랩 id — "언제 지우라고 했는지"를 단언하기 위한 기록.
+  final List<String> ackedScrapIds = [];
+
+  @override
+  Future<void> ackScraps(List<String> scrapIds) async {
+    ackedScrapIds.addAll(scrapIds);
+  }
+
   @override
   Future<ExploreResult> explore(ExploreRequest req) async {
     exploreCalls.add(req);

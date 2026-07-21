@@ -2,10 +2,16 @@ import 'dart:math';
 
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:prober_local/core/app_exception.dart';
+import 'package:prober_local/data/api/api_client.dart';
 import 'package:prober_local/data/api/mock_api_client.dart';
 import 'package:prober_local/data/api/mock_data.dart';
 import 'package:prober_local/data/db/database.dart';
+import 'package:prober_local/data/dto/explore.dart';
+import 'package:prober_local/data/dto/auth.dart';
 import 'package:prober_local/data/dto/graph.dart';
+import 'package:prober_local/data/dto/recommendation.dart';
+import 'package:prober_local/data/dto/user_context.dart';
 import 'package:prober_local/data/repository/thoughtmap_repository.dart';
 
 /// 흐름 B(명세 §6)의 로컬 측 검증.
@@ -147,4 +153,79 @@ void main() {
     final graph = await db.loadGraph();
     expect(graph.nodes.map((n) => n.id), ['new']);
   });
+
+  test('로컬 반영을 마친 뒤에야 서버 버퍼를 비우라고 알린다', () async {
+    // 서버가 응답 직후 스스로 지우면, 응답을 못 받은 클라이언트의 진단이
+    // 서버에서도 로컬에서도 사라진다(QA 중 실제로 한 세션이 날아갔다).
+    // 그래서 삭제 시점을 "로컬에 다 썼다"는 확인 뒤로 미뤘다.
+    final api = _AckSpyApi()..bind(db);
+    final spyRepo = ThoughtmapRepository(api: api, db: db);
+
+    await spyRepo.sync();
+
+    expect(api.ackedScrapIds, ['s1', 's2']);
+    expect(api.graphWhenAcked, isNotNull,
+        reason: 'ack 시점에는 이미 로컬 그래프가 갱신돼 있어야 한다');
+    expect(api.graphWhenAcked!.nodes, isNotEmpty);
+  });
+
+  test('ack 이 실패해도 동기화는 성공으로 끝난다', () async {
+    // 다음 동기화가 같은 스크랩을 다시 반영하므로 잃는 게 없다.
+    final api = _AckSpyApi(failAck: true);
+    final spyRepo = ThoughtmapRepository(api: api, db: db);
+
+    final result = await spyRepo.sync();
+
+    expect(result.graph.nodes, isNotEmpty);
+    expect((await db.loadGraph()).nodes, isNotEmpty);
+  });
+}
+
+/// ack 시점을 관찰하는 가짜 서버.
+class _AckSpyApi implements ApiClient {
+  _AckSpyApi({this.failAck = false});
+
+  final bool failAck;
+  final List<String> ackedScrapIds = [];
+
+  /// ack 을 받은 순간의 로컬 그래프. 순서를 단언하기 위해 스파이가 직접 읽는다.
+  Graph? graphWhenAcked;
+  AppDatabase? _db;
+
+  void bind(AppDatabase db) => _db = db;
+
+  @override
+  Future<ThoughtmapUpdateOut> updateThoughtmap(Graph graph, UserContext ctx) async {
+    return const ThoughtmapUpdateOut(
+      graph: Graph(nodes: [
+        GraphNode(
+          id: 'c_환율',
+          concept: '환율',
+          state: NodeState.understood,
+          isPrereq: false,
+        ),
+      ]),
+      recommendations: Recommendations(),
+      consumedScrapIds: ['s1', 's2'],
+    );
+  }
+
+  @override
+  Future<void> ackScraps(List<String> scrapIds) async {
+    if (failAck) {
+      throw const AppException(code: 'x', message: 'ack 실패');
+    }
+    ackedScrapIds.addAll(scrapIds);
+    graphWhenAcked = await _db?.loadGraph();
+  }
+
+  @override
+  Future<ExploreResult> explore(ExploreRequest req) async => ExploreResult.empty;
+  @override
+  Future<TokenOut> login(String e, String p) async =>
+      const TokenOut(accessToken: 't', userId: 'u');
+  @override
+  Future<String> signup(String e, String p) async => 'u';
+  @override
+  Future<MeOut> me() async => const MeOut(userId: 'u', email: 'u@e.com');
 }

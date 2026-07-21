@@ -169,6 +169,15 @@ class MockApiClient implements ApiClient {
     );
   }
 
+  /// 반영 확인을 받은 스크랩 id. 테스트가 "언제 지우라고 했는지"를 볼 수 있다.
+  final List<String> ackedScrapIds = [];
+
+  @override
+  Future<void> ackScraps(List<String> scrapIds) async {
+    await _delay();
+    ackedScrapIds.addAll(scrapIds);
+  }
+
   @override
   Future<ExploreResult> explore(ExploreRequest req) async {
     await _delay();
