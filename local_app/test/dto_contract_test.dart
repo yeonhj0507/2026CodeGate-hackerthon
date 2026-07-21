@@ -110,6 +110,53 @@ void main() {
     });
   });
 
+  group('OxQuiz', () {
+    test('노드에 실려 라운드트립된다', () {
+      const original = Graph(nodes: [
+        GraphNode(
+          id: 'c_기준금리',
+          concept: '기준금리',
+          state: NodeState.notUnderstood,
+          isPrereq: false,
+          oxQuiz: OxQuiz(
+            statement: '금리 인하는 곧바로 임금을 올려 물가를 자극한다',
+            answer: false,
+            sourceQuestion: '금리를 내리면 물가가 오를 수 있는 이유는?',
+          ),
+        ),
+      ]);
+
+      final node = Graph.fromJson(original.toJson()).nodes.single;
+      expect(node.oxQuiz, isNotNull);
+      expect(node.oxQuiz!.answer, isFalse);
+      expect(node.oxQuiz!.statement, contains('임금'));
+      expect(node.oxQuiz!.sourceQuestion, isNotNull);
+    });
+
+    test('재료가 없으면 null 이고 파싱은 살아남는다(구버전 서버 호환)', () {
+      final restored = Graph.fromJson({
+        'nodes': [
+          {'id': 'x', 'concept': 'X'},
+        ],
+      });
+      expect(restored.nodes.single.oxQuiz, isNull);
+    });
+  });
+
+  test('ArticleRecommendation 은 출처(제휴/검색)를 보존한다', () {
+    final restored = ArticleRecommendation.fromJson({
+      'title': '기준금리 읽기',
+      'url': 'https://n.example/a',
+      'source': 'search',
+    });
+    expect(restored.isFromSearch, isTrue);
+
+    // 서버가 source 를 안 보내던 시절 데이터는 제휴로 본다.
+    final legacy = ArticleRecommendation.fromJson({'title': 't', 'url': 'u'});
+    expect(legacy.source, 'partner');
+    expect(legacy.isFromSearch, isFalse);
+  });
+
   test('Recommendations 라운드트립 — 결핍/확장/기사 세 갈래', () {
     const original = Recommendations(
       gapConcepts: [

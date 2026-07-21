@@ -95,6 +95,7 @@ class ArticleRecommendation {
     required this.url,
     this.publisher,
     this.reason,
+    this.source = 'partner',
   });
 
   final String title;
@@ -102,12 +103,19 @@ class ArticleRecommendation {
   final String? publisher;
   final String? reason;
 
+  /// 'partner' = 신문사 제휴 데이터셋(명세 §4.4 확정 소스),
+  /// 'search'  = 제휴에서 못 채운 자리를 웹 검색으로 메운 것.
+  final String source;
+
+  bool get isFromSearch => source == 'search';
+
   factory ArticleRecommendation.fromJson(Map<String, dynamic> json) {
     return ArticleRecommendation(
       title: json['title'] as String,
       url: json['url'] as String? ?? '',
       publisher: json['publisher'] as String?,
       reason: json['reason'] as String?,
+      source: json['source'] as String? ?? 'partner',
     );
   }
 
@@ -116,6 +124,7 @@ class ArticleRecommendation {
         'url': url,
         'publisher': publisher,
         'reason': reason,
+        'source': source,
       };
 }
 

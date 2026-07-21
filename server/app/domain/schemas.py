@@ -62,12 +62,21 @@ class QuizResponse(Strict):
 
 
 class ScrapResult(Strict):
-    """퀴즈 1문항의 진단 결과. parentConcept 가 선행→후행 엣지 복원 근거."""
+    """퀴즈 1문항의 진단 결과. parentConcept 가 선행→후행 엣지 복원 근거.
+
+    아래 문항·선지 필드는 **OX 퀴즈 재료**다(추천 탭 개념 상세). 서버는 퀴즈를 저장하지
+    않으므로(명세 §4.2 stateless) 익스텐션이 실어 보내지 않으면 만들 방법이 없다.
+    구버전 익스텐션도 그대로 동작하도록 전부 선택 필드로 둔다.
+    """
 
     conceptTag: str
     parentConcept: str | None = None
     level: int = 0
     correct: bool
+
+    question: str | None = None
+    selectedOption: str | None = None  # 사용자가 고른 보기. 오답이면 OX 의 "거짓" 재료
+    correctOption: str | None = None
 
 
 class ScrapRequest(Strict):
@@ -97,6 +106,18 @@ class SourceArticle(Strict):
     title: str = ""
 
 
+class OxQuiz(Strict):
+    """개념 상세에 붙는 O/X 한 문항.
+
+    LLM 이 만들지 않는다. 사용자가 실제로 골랐던 오답 선지를 그대로 진술문으로 쓰므로
+    (그래서 `answer=False`) "내가 왜 틀렸는지"를 그 자리에서 되짚게 된다.
+    """
+
+    statement: str
+    answer: bool
+    sourceQuestion: str | None = None
+
+
 class GraphNode(Strict):
     id: str
     concept: str
@@ -104,6 +125,7 @@ class GraphNode(Strict):
     isPrereq: bool = False
     sourceArticles: list[SourceArticle] = Field(default_factory=list)
     summaryMeta: str | None = None
+    oxQuiz: OxQuiz | None = None
 
     # 그래프 시각화 노출 여부(명세 §4.4·§7). 확장 후보를 "수락 전 비노출"로 두기 위한 필드다.
     #
@@ -177,6 +199,8 @@ class ArticleRecommendation(Strict):
     publisher: str = ""
     summary: str = ""
     matchedConcepts: list[str] = Field(default_factory=list)
+    # 제휴 데이터셋에서 왔는지, 웹 검색 폴백으로 채웠는지. 로컬앱이 출처를 표시할 수 있다.
+    source: Literal["partner", "search"] = "partner"
 
 
 class Recommendations(Strict):
@@ -190,3 +214,22 @@ class ThoughtmapUpdateResponse(Strict):
     recommendations: Recommendations
     # 이번 동기화로 소비·삭제된 스크랩 수 (디버깅·데모용)
     consumedScraps: int = 0
+
+
+# ------------------------------------------------------------ /explore
+
+
+class ExploreRequest(Strict):
+    """탐색 탭 — 키워드 2~3개를 묶어 더 파고들기.
+
+    서버는 그래프를 보관하지 않으므로 노드 id 만으로는 개념명을 모른다.
+    로컬앱이 id 와 이름을 함께 보낸다.
+    """
+
+    conceptIds: list[str] = Field(default_factory=list)
+    conceptTags: list[str] = Field(min_length=1, max_length=5)
+
+
+class ExploreResponse(Strict):
+    explanation: str
+    articles: list[ArticleRecommendation] = Field(default_factory=list)

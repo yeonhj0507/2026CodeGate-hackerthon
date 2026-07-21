@@ -84,11 +84,16 @@ export const useSession = create<Store>((set, get) => ({
     if (phase !== 'ASKING' || !active) return
 
     const correct = selectedIndex === active.item.answerIndex
+    const { question, options, answerIndex } = active.item
     const result: ScrapResult = {
       conceptTag: conceptOf(active),
       parentConcept,
       level: active.level,
       correct,
+      // 서버가 이 개념의 OX 문항을 만들 재료. 고른 보기가 곧 "틀린 진술"이 된다.
+      question,
+      selectedOption: options[selectedIndex],
+      correctOption: options[answerIndex],
     }
 
     set({

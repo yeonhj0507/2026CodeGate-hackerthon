@@ -7,6 +7,7 @@ import '../data/api/dio_api_client.dart';
 import '../data/api/mock_api_client.dart';
 import '../data/api/token_store.dart';
 import '../data/db/database.dart';
+import '../data/dto/explore.dart';
 import '../data/dto/graph.dart';
 import '../data/dto/recommendation.dart';
 import '../data/repository/auth_repository.dart';
@@ -198,3 +199,83 @@ final syncControllerProvider =
 
 /// 그래프에서 사용자가 선택한 노드. null이면 상세 패널을 닫는다.
 final selectedNodeIdProvider = StateProvider<String?>((ref) => null);
+
+// ── 탐색 탭 ────────────────────────────────────────────────────────────────
+
+/// 탐색용으로 고른 키워드(노드 id). 2~3개를 묶어 "더 탐색하기"에 넘긴다.
+final exploreSelectionProvider =
+    StateProvider<Set<String>>((ref) => <String>{});
+
+/// "더 탐색하기" 결과. 요청 전에는 null, 요청 중에는 loading.
+class ExploreController extends StateNotifier<AsyncValue<ExploreResult?>> {
+  ExploreController(this._api) : super(const AsyncValue.data(null));
+
+  final ApiClient _api;
+
+  Future<void> run(List<GraphNode> nodes) async {
+    if (nodes.isEmpty) return;
+    state = const AsyncValue.loading();
+    try {
+      final result = await _api.explore(ExploreRequest(
+        conceptIds: nodes.map((n) => n.id).toList(),
+        conceptTags: nodes.map((n) => n.concept).toList(),
+      ));
+      state = AsyncValue.data(result);
+    } on AppException catch (e, st) {
+      state = AsyncValue.error(e, st);
+    }
+  }
+
+  void clear() => state = const AsyncValue.data(null);
+}
+
+final exploreControllerProvider =
+    StateNotifierProvider<ExploreController, AsyncValue<ExploreResult?>>((ref) {
+  return ExploreController(ref.watch(apiClientProvider));
+});
+
+// ── 보관함 ────────────────────────────────────────────────────────────────
+
+/// 열람한 기사 1건 — 그래프에서 역산한다(서버 왕복 없음).
+class LibraryEntry {
+  const LibraryEntry({
+    required this.article,
+    required this.concepts,
+  });
+
+  final SourceArticle article;
+
+  /// 이 기사에서 학습한 개념들.
+  final List<GraphNode> concepts;
+
+  int get understoodCount => concepts.where((n) => n.isUnderstood).length;
+}
+
+/// 보관함 목록. **서버 엔드포인트가 아니라 로컬 그래프에서 뽑는다**(명세 §4.5 —
+/// 학습 데이터는 로컬이 원본이고, 서버는 스크랩을 동기화 시 소비·삭제한다).
+final libraryProvider = Provider<List<LibraryEntry>>((ref) {
+  final graph = ref.watch(graphProvider).valueOrNull ?? Graph.empty;
+
+  final byKey = <String, List<GraphNode>>{};
+  final articleOf = <String, SourceArticle>{};
+  for (final node in graph.nodes) {
+    for (final article in node.sourceArticles) {
+      final key = article.url.isNotEmpty ? article.url : article.title;
+      if (key.isEmpty) continue;
+      byKey.putIfAbsent(key, () => []).add(node);
+      // URL 이 있는 쪽을 대표로 둔다(구형 데이터가 섞여도 링크를 살린다).
+      final known = articleOf[key];
+      if (known == null || (known.url.isEmpty && article.url.isNotEmpty)) {
+        articleOf[key] = article;
+      }
+    }
+  }
+
+  final entries = [
+    for (final entry in byKey.entries)
+      LibraryEntry(article: articleOf[entry.key]!, concepts: entry.value),
+  ];
+  // 많이 배운 기사가 위로.
+  entries.sort((a, b) => b.concepts.length.compareTo(a.concepts.length));
+  return entries;
+});

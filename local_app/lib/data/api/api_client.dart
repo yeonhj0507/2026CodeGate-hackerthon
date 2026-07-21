@@ -1,4 +1,5 @@
 import '../dto/auth.dart';
+import '../dto/explore.dart';
 import '../dto/graph.dart';
 import '../dto/recommendation.dart';
 import '../dto/user_context.dart';
@@ -38,4 +39,7 @@ abstract class ApiClient {
   Future<MeOut> me();
 
   Future<ThoughtmapUpdateOut> updateThoughtmap(Graph graph, UserContext ctx);
+
+  /// 탐색 탭 — 고른 키워드를 묶어 설명 + 관련 기사 2건.
+  Future<ExploreResult> explore(ExploreRequest req);
 }
