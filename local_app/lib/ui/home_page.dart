@@ -492,6 +492,23 @@ class _Legend extends StatelessWidget {
           _LegendRow(
               color: nodeStyleOfState(NodeState.unknown).border,
               label: nodeStyleOfState(NodeState.unknown).label),
+          const SizedBox(height: 6),
+          // 기사 노드는 이해상태가 없다. 색이 아니라 아이콘으로 구분되므로
+          // 범례도 같은 아이콘을 쓴다.
+          const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 12,
+                child: Icon(Icons.article_outlined,
+                    size: 12, color: AppColors.textMuted),
+              ),
+              SizedBox(width: 8),
+              Text('기사 — 눌러서 열기',
+                  style:
+                      TextStyle(fontSize: 11.5, color: AppColors.textPrimary)),
+            ],
+          ),
         ],
       ),
     );
