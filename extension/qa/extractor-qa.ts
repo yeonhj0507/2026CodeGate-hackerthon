@@ -90,6 +90,28 @@ function mixedLike(): Document {
   `)
 }
 
+/**
+ * 글로벌이코노믹형: 소제목만 <h3> 이고 본문은 전부 <br> 로 나뉜다.
+ * 소제목 3개가 잡히는 바람에 "문단 3개 미만" 조건에 걸리지 않아 <br> 폴백이
+ * 발동하지 않았고, 본문이 통째로 빠진 채 소제목만 문단이 됐었다.
+ */
+function headingsPlusBrArticle(): Document {
+  const third = Math.ceil(BODY_SENTENCES.length / 3)
+  const chunk = (i: number) => BODY_SENTENCES.slice(i * third, (i + 1) * third).join('<br><br>')
+  return html(`
+    <div class="vcon">
+      <div class="vtxt detailCont">
+        <h3>독자 결제망 구축으로 의존도 낮춘다</h3>
+        ${chunk(0)}<br><br>
+        <h3>한국 금융권 시사점</h3>
+        ${chunk(1)}<br><br>
+        <h3>예금 유출 방지를 위한 한도 설정</h3>
+        ${chunk(2)}
+      </div>
+    </div>
+  `)
+}
+
 function html(inner: string): Document {
   return new JSDOM(
     `<!doctype html><html><head><title>기준금리 인하 기사</title></head><body>${inner}</body></html>`,
@@ -155,6 +177,16 @@ console.log('='.repeat(78))
 {
   const r = report('혼합형 (<p> 1개 + <br> 본문)', mixedLike())
   check('폴백이 채택되어 문단이 늘어난다', (r?.paragraphs.length ?? 0) > 1, true)
+}
+
+// 4b) 소제목만 블록이고 본문은 <br> 인 경우(글로벌이코노믹형).
+//     소제목 3개 때문에 폴백이 안 돌아 본문이 통째로 빠졌던 회귀.
+{
+  const r = report('소제목 <h3> + <br> 본문', headingsPlusBrArticle())
+  const texts = (r?.paragraphs ?? []).map((p) => p.text).join(' ')
+  check('소제목 수보다 문단이 많다(폴백 발동)', (r?.paragraphs.length ?? 0) > 3, true)
+  check('본문 문장이 포함된다', texts.includes(BODY_SENTENCES[4].slice(0, 30)), true)
+  check('마지막 문단도 포함된다', texts.includes(BODY_SENTENCES[11].slice(0, 30)), true)
 }
 
 // 5) 재실행 idempotent: 두 번 돌려도 결과·DOM 이 같아야 한다(래퍼 중첩 금지).

@@ -39,8 +39,14 @@ const BLOCK_SELECTOR = 'p, li, blockquote, h1, h2, h3, h4, pre, dd'
 //   중앙일보의 노이즈컷 48개는 오탐이 아니라 추천기사·태그·댓글이 제대로 걸러진 것이라
 //   NOISE_PATTERN 은 손대지 않았다.
 
-/** <br> 폴백을 시도할 조건: 정상 경로 문단 수가 이 값 미만일 때. */
-const BR_FALLBACK_MAX_BLOCKS = 3
+/**
+ * <br> 폴백을 시도할 조건: 정상 경로가 찾은 **본문 문단**(소제목 제외)이 이 값 미만일 때.
+ *
+ * 소제목을 세지 않는 이유: 글로벌이코노믹처럼 소제목만 <h3> 이고 본문은 전부 <br> 로
+ * 나뉜 사이트가 있다. 문단 수만 보면 3개(소제목)라 폴백이 발동하지 않아 본문이
+ * 통째로 빠졌다.
+ */
+const BR_FALLBACK_MIN_BODY = 3
 
 /** <br> 폴백을 시도할 조건: 한 요소의 직계 자식 <br> 이 이 개수 이상일 때. */
 const BR_FALLBACK_MIN_BR = 4
@@ -115,9 +121,10 @@ export function extractArticle(doc: Document = document): ExtractResult | null {
     candidates.push({ el, text })
   }
 
-  // 4) <p> 없이 <br> 로만 나뉜 본문(네이버뉴스류) 폴백.
-  //    정상 경로가 사실상 실패했을 때만 시도하므로 <p> 기반 문서는 영향받지 않는다.
-  if (candidates.length < BR_FALLBACK_MAX_BLOCKS) {
+  // 4) <p> 없이 <br> 로만 나뉜 본문(네이버뉴스·글로벌이코노믹류) 폴백.
+  //    본문 문단을 사실상 못 찾았을 때만 시도하므로 <p> 기반 문서는 영향받지 않는다.
+  const bodyCount = candidates.filter((c) => !HEADING_TAGS.has(c.el.tagName)).length
+  if (bodyCount < BR_FALLBACK_MIN_BODY) {
     const fromBr = collectBrSegments(root, doc, readableLower)
     if (fromBr.length > candidates.length) candidates = fromBr
   }
