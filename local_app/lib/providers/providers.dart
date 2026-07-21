@@ -196,5 +196,34 @@ final syncControllerProvider =
   return SyncController(ref.watch(thoughtmapRepositoryProvider), ref);
 });
 
-/// 그래프에서 사용자가 선택한 노드. null이면 상세 패널을 닫는다.
+/// 그래프에서 사용자가 선택한 노드. null이면 뇌지도 위 상세 카드를 닫는다.
+///
+/// 오직 "그래프 위 노드 상세 카드" 표시에만 쓰인다 — 도킹 패널 모드 전환이나
+/// 탐색 탭 키워드 선택과는 완전히 독립적이다([exploreKeywordProvider] 참고).
 final selectedNodeIdProvider = StateProvider<String?>((ref) => null);
+
+/// 우측 도킹 패널이 지금 보여주는 화면(명세 밖, Figma 시안 §S1~S3).
+/// [closed]는 패널이 접혀 있는 상태 — 앱 진입 시 기본값이라 세 아이콘 중
+/// 아무것도 활성 표시되지 않는다.
+enum RightPanelMode { closed, recommendations, explore, archive }
+
+/// 우측 도킹 패널 모드. 기본값은 [RightPanelMode.closed].
+final rightPanelModeProvider =
+    StateProvider<RightPanelMode>((ref) => RightPanelMode.closed);
+
+/// 추천 탭에서 지금 인라인으로 펼쳐 보여주는 개념 상세. null이면 목록만 보인다.
+///
+/// 그래프 선택([selectedNodeIdProvider])과는 별개다 — 추천 탭에서 개념을 눌러도
+/// 패널이 "탐색" 탭으로 넘어가면 안 되기 때문에 독립된 상태로 둔다.
+final inlineConceptDetailProvider = StateProvider<String?>((ref) => null);
+
+/// "탐색" 탭에서 고른 키워드(그래프 노드 id) 목록. 최대 5개까지만 담긴다.
+///
+/// 그래프 노드 클릭([selectedNodeIdProvider])과는 완전히 독립된 액션이다 —
+/// 그래프 클릭(탭)은 노드 상세 카드만 열고, 탐색 키워드는 뇌지도에서 노드를
+/// 길게 눌러 끌어다(드래그) 탐색 탭의 드롭 영역에 놓아야 채워진다.
+final exploreKeywordProvider = StateProvider<List<String>>((ref) => const []);
+
+/// "더 탐색하기"를 눌러 결과(설명·추천 기사)를 펼쳤는지 여부.
+/// 키워드 선택이 바뀌면 다시 접어서, 매번 버튼을 눌러야 결과가 보이게 한다.
+final exploreRevealedProvider = StateProvider<bool>((ref) => false);

@@ -18,7 +18,18 @@ part 'database.g.dart';
 ])
 class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor])
-      : super(executor ?? driftDatabase(name: 'prober_local'));
+      : super(
+          executor ??
+              driftDatabase(
+                name: 'prober_local',
+                // 웹(Chrome) 미리보기 전용 — 배포 타깃은 Windows 데스크톱이라
+                // 네이티브 경로는 이 옵션을 쓰지 않는다.
+                web: DriftWebOptions(
+                  sqlite3Wasm: Uri.parse('sqlite3.wasm'),
+                  driftWorker: Uri.parse('drift_worker.js'),
+                ),
+              ),
+        );
 
   @override
   int get schemaVersion => 1;

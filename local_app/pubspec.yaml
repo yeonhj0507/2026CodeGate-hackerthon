@@ -31,6 +31,9 @@ dependencies:
   # 외부 링크
   url_launcher: ^6.3.1
 
+  # 로고 마크(SVG)
+  flutter_svg: ^2.0.16
+
 # DTO는 서버와의 계약 문서 역할을 겸하므로 fromJson/toJson을 직접 작성한다.
 # 코드 생성은 drift 스키마 하나로 제한해 빌드 의존성을 줄였다.
 dev_dependencies:
@@ -42,3 +45,5 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/branding/

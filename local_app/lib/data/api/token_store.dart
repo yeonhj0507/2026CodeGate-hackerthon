@@ -5,7 +5,10 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 /// 익스텐션과 토큰을 공유하지 않는다 — 각자 독립 로그인, 동일 계정(명세 §4.1).
 class TokenStore {
   TokenStore([FlutterSecureStorage? storage])
-      : _storage = storage ?? const FlutterSecureStorage();
+      : _storage = storage ??
+            const FlutterSecureStorage(
+              mOptions: MacOsOptions(usesDataProtectionKeychain: false),
+            );
 
   final FlutterSecureStorage _storage;
 

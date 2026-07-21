@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'providers/providers.dart';
+import 'ui/app_colors.dart';
 import 'ui/home_page.dart';
 import 'ui/login_page.dart';
 
@@ -15,8 +16,13 @@ class ProberApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = ColorScheme.fromSeed(
-      seedColor: const Color(0xFF4C6FFF),
-      brightness: Brightness.dark,
+      seedColor: AppColors.pink,
+      brightness: Brightness.light,
+      surface: AppColors.canvasBg,
+      outline: AppColors.textMuted,
+      outlineVariant: AppColors.border,
+      errorContainer: AppColors.pinkBg,
+      onErrorContainer: AppColors.pink,
     );
     return MaterialApp(
       title: '프로버 — 생각 지도',
@@ -24,7 +30,11 @@ class ProberApp extends StatelessWidget {
       theme: ThemeData(
         colorScheme: scheme,
         useMaterial3: true,
-        scaffoldBackgroundColor: const Color(0xFF12141C),
+        scaffoldBackgroundColor: AppColors.canvasBg,
+        textTheme: ThemeData.light().textTheme.apply(
+              bodyColor: AppColors.textPrimary,
+              displayColor: AppColors.textPrimary,
+            ),
       ),
       home: const _AuthGate(),
     );
