@@ -43,7 +43,7 @@ abstract final class MockData {
           id: 'c_물가상승률',
           concept: '물가상승률',
           state: NodeState.notUnderstood,
-          isPrereq: true,
+          isPrereq: false,
           sourceArticles: [
           SourceArticle(
             url: 'https://example.com/prober/fed-hold',
@@ -68,7 +68,7 @@ abstract final class MockData {
           ConceptRecommendation(
             conceptId: 'c_물가상승률',
             conceptTag: '물가상승률',
-            reason: '‘실질금리’를 이해하려면 먼저 짚어야 하는 선행 개념입니다.',
+            reason: '‘실질금리’를 이해하는 데 꼭 필요한 개념입니다.',
           ),
         ],
         // 아직 이해완료를 발판 삼을 곳이 없다 — 콜드스타트(명세 §4.4 한계) 시연.
@@ -85,7 +85,7 @@ abstract final class MockData {
             title: '물가는 어떻게 측정할까 — CPI 읽는 법',
             url: 'https://example.com/prober/cpi-explained',
             publisher: '경향신문',
-            reason: '선행개념 ‘물가상승률’ 보충',
+            reason: '미이해 개념 ‘물가상승률’ 보충',
           ),
         ],
       ),
@@ -109,7 +109,7 @@ abstract final class MockData {
           id: 'c_재고순환',
           concept: '재고순환',
           state: NodeState.notUnderstood,
-          isPrereq: true,
+          isPrereq: false,
           sourceArticles: [
           SourceArticle(
             url: 'https://example.com/prober/chip-exports',
@@ -171,7 +171,7 @@ abstract final class MockData {
           id: 'c_탄소배출권',
           concept: '탄소배출권',
           state: NodeState.notUnderstood,
-          isPrereq: true,
+          isPrereq: false,
           sourceArticles: [
           SourceArticle(
             url: 'https://example.com/prober/cbam',
@@ -220,7 +220,7 @@ abstract final class MockData {
           ConceptRecommendation(
             conceptId: 'c_탄소배출권',
             conceptTag: '탄소배출권',
-            reason: '‘CBAM’을 이해하려면 먼저 짚어야 하는 선행 개념입니다.',
+            reason: '‘CBAM’을 이해하는 데 꼭 필요한 개념입니다.',
           ),
           ConceptRecommendation(
             conceptId: 'c_CBAM',
@@ -256,7 +256,7 @@ abstract final class MockData {
           id: 'c_명목금리',
           concept: '명목금리',
           state: NodeState.understood,
-          isPrereq: true,
+          isPrereq: false,
           sourceArticles: [
             SourceArticle(
               url: 'https://example.com/prober/cpi-explained',
@@ -270,7 +270,7 @@ abstract final class MockData {
           id: 'c_물가상승률',
           concept: '물가상승률',
           state: NodeState.understood,
-          isPrereq: true,
+          isPrereq: false,
           sourceArticles: [
             SourceArticle(
               url: 'https://example.com/prober/fed-hold',
@@ -299,7 +299,7 @@ abstract final class MockData {
               title: '물가는 어떻게 측정할까 — CPI 읽는 법',
             ),
           ],
-          summaryMeta: '명목금리 − 물가상승률. 두 선행을 모두 잡고 나서야 "금리를 동결했는데 '
+          summaryMeta: '명목금리 − 물가상승률. 두 개념을 모두 잡고 나서야 "금리를 동결했는데 '
               '긴축 효과가 커졌다"가 읽힙니다.',
         ),
       ],
@@ -311,7 +311,7 @@ abstract final class MockData {
           ConceptRecommendation(
             conceptId: 'c_탄소배출권',
             conceptTag: '탄소배출권',
-            reason: '‘CBAM’을 이해하려면 먼저 짚어야 하는 선행 개념입니다.',
+            reason: '‘CBAM’을 이해하는 데 꼭 필요한 개념입니다.',
           ),
         ],
         expansionConcepts: [],

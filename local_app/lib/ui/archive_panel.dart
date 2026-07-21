@@ -96,9 +96,12 @@ class _ArchiveCard extends StatelessWidget {
           child: Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            decoration: BoxDecoration(
-              border: Border.all(color: AppColors.border),
-              borderRadius: BorderRadius.circular(10),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.all(Radius.circular(10)),
+              boxShadow: [
+                BoxShadow(color: Color(0x14000000), blurRadius: 6, offset: Offset(0, 2)),
+              ],
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,

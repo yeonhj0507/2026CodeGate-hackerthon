@@ -8,7 +8,6 @@ import 'app_colors.dart';
 import 'archive_panel.dart';
 import 'explore_panel.dart';
 import 'graph_view.dart';
-import 'node_detail_card.dart';
 import 'onboarding_view.dart';
 import 'recommendation_panel.dart';
 import 'widgets/logo_mark.dart';
@@ -40,12 +39,10 @@ class _HomePageState extends ConsumerState<HomePage> {
     final graphAsync = ref.watch(graphProvider);
     final sync = ref.watch(syncControllerProvider);
     final mode = ref.watch(rightPanelModeProvider);
-    final selectedId = ref.watch(selectedNodeIdProvider);
 
     _listenForSyncFeedback();
 
     final graph = graphAsync.valueOrNull ?? Graph.empty;
-    final selected = selectedId == null ? null : graph.nodeById(selectedId);
 
     return Scaffold(
       backgroundColor: AppColors.canvasBg,
@@ -55,7 +52,7 @@ class _HomePageState extends ConsumerState<HomePage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _TopBar(mode: mode, graph: graph),
+              _TopBar(mode: mode),
               const SizedBox(height: 20),
               Expanded(
                 child: graph.isEmpty
@@ -64,16 +61,12 @@ class _HomePageState extends ConsumerState<HomePage> {
                         graph: graph,
                         sync: sync,
                         mode: mode,
-                        selected: selected,
                         onErrorDismiss: () => ref
                             .read(syncControllerProvider.notifier)
                             .clearError(),
                         onClosePanel: () => ref
                             .read(rightPanelModeProvider.notifier)
                             .state = RightPanelMode.closed,
-                        onCloseNodeDetail: () => ref
-                            .read(selectedNodeIdProvider.notifier)
-                            .state = null,
                       ),
               ),
             ],
@@ -111,50 +104,20 @@ class _HomePageState extends ConsumerState<HomePage> {
 }
 
 class _TopBar extends ConsumerWidget {
-  const _TopBar({required this.mode, required this.graph});
+  const _TopBar({required this.mode});
 
   final RightPanelMode mode;
-  final Graph graph;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final sync = ref.watch(syncControllerProvider);
-
     return Row(
       children: [
         const LogoLockup(),
-        if (!graph.isEmpty) ...[
-          const SizedBox(width: 14),
-          _GraphStats(graph: graph),
-        ],
         const Spacer(),
-        // 경험치 배지 — 눌러서 적립 내역을 연다.
-        const XpBadge(),
-        const SizedBox(width: 12),
         if (AppConfig.useMock) ...[
           const _MockBadge(),
           const SizedBox(width: 12),
         ],
-        _LastSynced(syncedAt: sync.lastSyncedAt),
-        const SizedBox(width: 12),
-        OutlinedButton.icon(
-          onPressed: sync.inProgress
-              ? null
-              : () => ref.read(syncControllerProvider.notifier).sync(),
-          style: OutlinedButton.styleFrom(
-            foregroundColor: AppColors.textPrimary,
-            side: const BorderSide(color: AppColors.border),
-          ),
-          icon: sync.inProgress
-              ? const SizedBox(
-                  width: 14,
-                  height: 14,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.sync, size: 18),
-          label: Text(sync.inProgress ? '가져오는 중…' : '내 이력 가져오기'),
-        ),
-        const SizedBox(width: 8),
         PopupMenuButton<String>(
           icon: const Icon(Icons.more_vert, color: AppColors.textMuted),
           onSelected: (v) {
@@ -258,19 +221,15 @@ class _MainContent extends StatelessWidget {
     required this.graph,
     required this.sync,
     required this.mode,
-    required this.selected,
     required this.onErrorDismiss,
     required this.onClosePanel,
-    required this.onCloseNodeDetail,
   });
 
   final Graph graph;
   final SyncState sync;
   final RightPanelMode mode;
-  final GraphNode? selected;
   final VoidCallback onErrorDismiss;
   final VoidCallback onClosePanel;
-  final VoidCallback onCloseNodeDetail;
 
   @override
   Widget build(BuildContext context) {
@@ -281,7 +240,13 @@ class _MainContent extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const _FilterChips(),
+              const Row(
+                children: [
+                  _FilterChips(),
+                  SizedBox(width: 12),
+                  XpBadge(),
+                ],
+              ),
               const SizedBox(height: 8),
               if (sync.error != null)
                 _SyncErrorBar(
@@ -304,16 +269,6 @@ class _MainContent extends StatelessWidget {
                       ),
                     ),
                     const Positioned(right: 16, top: 16, child: _Legend()),
-                    if (selected != null)
-                      Positioned(
-                        left: 16,
-                        bottom: 16,
-                        child: NodeDetailCard(
-                          node: selected!,
-                          graph: graph,
-                          onClose: onCloseNodeDetail,
-                        ),
-                      ),
                   ],
                 ),
               ),
@@ -355,9 +310,9 @@ class _DockedPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(20, 16, 12, 20),
+      padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: AppColors.panelBg,
+        color: AppColors.pinkBgFaint,
         border: Border.all(color: AppColors.border),
         borderRadius: BorderRadius.circular(16),
       ),
@@ -414,24 +369,6 @@ class _FilterChipsState extends State<_FilterChips> {
   }
 }
 
-/// 지도가 지금 무엇을 담고 있는지 한 줄로. 노드가 화면 밖에 있어도 총량이
-/// 보여서, 지도에 뜬 개수와 어긋나면 바로 눈에 띈다.
-class _GraphStats extends StatelessWidget {
-  const _GraphStats({required this.graph});
-
-  final Graph graph;
-
-  @override
-  Widget build(BuildContext context) {
-    final notUnderstood = graph.nodes.where((n) => n.isNotUnderstood).length;
-    final understood = graph.nodes.where((n) => n.isUnderstood).length;
-    return Text(
-      '개념 ${graph.nodes.length} · 이해완료 $understood · 미이해 $notUnderstood',
-      style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
-    );
-  }
-}
-
 class _MockBadge extends StatelessWidget {
   const _MockBadge();
 
@@ -464,9 +401,11 @@ class _Legend extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.92),
+        color: Colors.white,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: AppColors.border),
+        boxShadow: const [
+          BoxShadow(color: Color(0x14000000), blurRadius: 6, offset: Offset(0, 2)),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -507,33 +446,14 @@ class _LegendRow extends StatelessWidget {
           width: 12,
           height: 12,
           decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.18),
-            border: Border.all(color: color, width: 1.4),
-            borderRadius: BorderRadius.circular(3),
+            color: color,
+            borderRadius: BorderRadius.circular(4),
           ),
         ),
         const SizedBox(width: 8),
         Text(label,
             style: const TextStyle(fontSize: 11.5, color: AppColors.textPrimary)),
       ],
-    );
-  }
-}
-
-class _LastSynced extends StatelessWidget {
-  const _LastSynced({required this.syncedAt});
-
-  final DateTime? syncedAt;
-
-  @override
-  Widget build(BuildContext context) {
-    if (syncedAt == null) return const SizedBox.shrink();
-    final t = syncedAt!;
-    final hh = t.hour.toString().padLeft(2, '0');
-    final mm = t.minute.toString().padLeft(2, '0');
-    return Text(
-      '마지막 동기화 $hh:$mm',
-      style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
     );
   }
 }

@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:graphview/GraphView.dart' as gv;
@@ -5,6 +7,7 @@ import 'package:graphview/GraphView.dart' as gv;
 import '../data/dto/graph.dart';
 import '../providers/providers.dart';
 import 'app_colors.dart';
+import 'node_detail_card.dart';
 
 /// 생각 지도 시각화(명세 §5.1 "뇌 지도").
 ///
@@ -34,12 +37,44 @@ class ThoughtMapView extends ConsumerStatefulWidget {
   ConsumerState<ThoughtMapView> createState() => _ThoughtMapViewState();
 }
 
-class _ThoughtMapViewState extends ConsumerState<ThoughtMapView> {
-  final _controller = gv.GraphViewController();
+class _ThoughtMapViewState extends ConsumerState<ThoughtMapView>
+    with SingleTickerProviderStateMixin {
+  // 노드 상세 카드가 팬·줌을 따라가려면 캔버스 변환 행렬을 직접 들고 있어야
+  // 한다 — GraphViewController 에 넘기고 이 컨트롤러로 직접 구독한다.
+  final _transformController = TransformationController();
+  late final _controller =
+      gv.GraphViewController(transformationController: _transformController);
+
+  // graphview 패키지의 zoomToFit()은 뷰포트의 95%를 채우게 고정돼 있어 꽉 차
+  // 보인다는 피드백을 받아, 우리가 직접 재구현해 여백을 더 준다. 애니메이션은
+  // 패키지 내부 구현(GraphView.dart의 animateToMatrix)과 같은 방식으로 맞췄다.
+  //
+  // initState 에서 즉시 만든다 — late 필드로 두면 그래프가 계속 비어 있어
+  // _zoomToFit 이 한 번도 안 불린 채 dispose 될 때 거기서 처음 생성되면서
+  // "deactivated widget" 에러가 난다.
+  late final AnimationController _panController;
+  Animation<Matrix4>? _panAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _panController = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 600));
+  }
 
   /// 마지막으로 화면에 맞춘 그래프의 모양. 노드·엣지 구성이 바뀔 때만 다시 맞춘다.
   /// 매 빌드마다 맞추면 사용자가 확대해 둔 상태를 빼앗는다.
   String? _fittedShape;
+
+  /// [_NodeDetailOverlay]가 선택된 노드의 레이아웃 좌표를 찾을 수 있게 마지막
+  /// build 의 노드 맵을 들고 있는다. 노드 위치는 레이아웃 시점에 고정되고
+  /// 팬·줌만 바뀌므로, 선택이 바뀔 때마다 그래프를 다시 만들 필요는 없다.
+  ///
+  /// [_transformController]는 우리가 만들었지만 dispose는 하지 않는다 —
+  /// GraphViewController 에 넘기고 나면 GraphView 내부(`_GraphViewState`)가
+  /// 소유권을 가져가 자기 dispose 시점에 정리한다. 여기서 또 dispose 하면
+  /// "used after being disposed" 로 죽는다.
+  Map<String, gv.Node> _nodesById = const {};
 
   String _shapeOf(Graph g) => [
         for (final n in g.nodes) n.id,
@@ -65,8 +100,73 @@ class _ThoughtMapViewState extends ConsumerState<ThoughtMapView> {
     _fittedShape = shape;
     // 레이아웃이 끝난 뒤라야 뷰포트 크기와 노드 좌표가 잡힌다.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _controller.zoomToFit();
+      if (mounted) _zoomToFit();
     });
+  }
+
+  /// graphview 의 zoomToFit()과 같은 계산이지만 채움 비율을 낮춰(0.7) 화면에
+  /// 여백을 더 남긴다. 노드 좌표는 [_nodesById]에서, 뷰포트 크기는 이 위젯
+  /// 자신의 RenderBox 에서 얻는다.
+  void _zoomToFit() {
+    if (_nodesById.isEmpty) return;
+    final renderBox = context.findRenderObject() as RenderBox?;
+    if (renderBox == null || !renderBox.hasSize) return;
+
+    var minX = double.infinity;
+    var minY = double.infinity;
+    var maxX = double.negativeInfinity;
+    var maxY = double.negativeInfinity;
+    for (final node in _nodesById.values) {
+      minX = math.min(minX, node.position.dx);
+      minY = math.min(minY, node.position.dy);
+      maxX = math.max(maxX, node.position.dx + node.size.width);
+      maxY = math.max(maxY, node.position.dy + node.size.height);
+    }
+    final boundsWidth = maxX - minX;
+    final boundsHeight = maxY - minY;
+    if (boundsWidth <= 0 || boundsHeight <= 0) return;
+
+    final vp = renderBox.size;
+    const paddingFactor = 0.7;
+    final scale = math.min(
+      (vp.width / boundsWidth) * paddingFactor,
+      (vp.height / boundsHeight) * paddingFactor,
+    );
+
+    final scaledWidth = boundsWidth * scale;
+    final scaledHeight = boundsHeight * scale;
+    final centerOffset = Offset(
+      (vp.width - scaledWidth) / 2 - minX * scale,
+      (vp.height - scaledHeight) / 2 - minY * scale,
+    );
+
+    final target = Matrix4.identity()
+      ..translateByDouble(centerOffset.dx, centerOffset.dy, 0, 1)
+      ..scaleByDouble(scale, scale, scale, 1);
+
+    _panController.reset();
+    _panAnimation =
+        Matrix4Tween(begin: _transformController.value, end: target).animate(
+      CurvedAnimation(parent: _panController, curve: Curves.linear),
+    );
+    _panAnimation!.addListener(_onPanTick);
+    _panController.forward();
+  }
+
+  void _onPanTick() {
+    final animation = _panAnimation;
+    if (animation == null) return;
+    _transformController.value = animation.value;
+    if (!_panController.isAnimating) {
+      animation.removeListener(_onPanTick);
+      _panAnimation = null;
+    }
+  }
+
+  @override
+  void dispose() {
+    _panController.dispose();
+    super.dispose();
   }
 
   @override
@@ -89,6 +189,7 @@ class _ThoughtMapViewState extends ConsumerState<ThoughtMapView> {
     for (final node in nodesById.values) {
       gvGraph.addNode(node);
     }
+    _nodesById = nodesById;
     for (final e in graph.edges) {
       final from = nodesById[e.from];
       final to = nodesById[e.to];
@@ -108,7 +209,8 @@ class _ThoughtMapViewState extends ConsumerState<ThoughtMapView> {
     final config = gv.SugiyamaConfiguration()
       ..nodeSeparation = 40
       ..levelSeparation = 70
-      ..orientation = gv.SugiyamaConfiguration.ORIENTATION_TOP_BOTTOM;
+      ..orientation = gv.SugiyamaConfiguration.ORIENTATION_TOP_BOTTOM
+      ..addTriangleToEdge = false;
 
     final algorithm = gv.SugiyamaAlgorithm(config);
     Widget nodeBuilder(gv.Node gvNode) {
@@ -136,21 +238,187 @@ class _ThoughtMapViewState extends ConsumerState<ThoughtMapView> {
               controller: _controller,
             ),
         ),
-        // 확대하다 길을 잃어도 한 번에 돌아올 수 있게 둔다. 자동 맞춤은 그래프
-        // 모양이 바뀔 때만 돌기 때문에, 그 사이의 탈출구가 필요하다.
+        Positioned.fill(
+          child: _NodeDetailOverlay(
+            graph: graph,
+            nodesById: _nodesById,
+            transformController: _transformController,
+          ),
+        ),
         Positioned(
-          left: 16,
+          left: 0,
           bottom: 16,
-          child: Tooltip(
-            message: '전체 보기',
-            child: FloatingActionButton.small(
-              heroTag: 'graph-fit',
-              onPressed: _controller.zoomToFit,
-              child: const Icon(Icons.fit_screen_outlined),
-            ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const _SyncFab(),
+              const SizedBox(height: 12),
+              // 확대하다 길을 잃어도 한 번에 돌아올 수 있게 둔다. 자동 맞춤은
+              // 그래프 모양이 바뀔 때만 돌기 때문에, 그 사이의 탈출구가 필요하다.
+              _CanvasFab(
+                tooltip: '전체 보기',
+                heroTag: 'graph-fit',
+                onPressed: _zoomToFit,
+                icon: Icons.fit_screen_outlined,
+              ),
+            ],
           ),
         ),
       ],
+    );
+  }
+}
+
+/// 선택된 노드 옆에 뜨는 상세 카드.
+///
+/// 좌하단 고정이 아니라 **노드를 가리지 않는 자리**에 뜬다 — 오른쪽에 공간이
+/// 있으면 오른쪽, 없으면 왼쪽. 팬·줌으로 캔버스가 움직이면 카드도 노드에
+/// 딸려 가야 하므로, 레이아웃 좌표([gv.Node.position], 팬·줌과 무관하게
+/// 고정)를 매 프레임 [transformController]의 현재 행렬로 변환해 화면 좌표를
+/// 다시 구한다.
+class _NodeDetailOverlay extends ConsumerWidget {
+  const _NodeDetailOverlay({
+    required this.graph,
+    required this.nodesById,
+    required this.transformController,
+  });
+
+  final Graph graph;
+  final Map<String, gv.Node> nodesById;
+  final TransformationController transformController;
+
+  static const _cardWidth = 320.0;
+  static const _cardMaxHeight = 420.0;
+  static const _gap = 16.0;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final selectedId = ref.watch(selectedNodeIdProvider);
+    final node = selectedId == null ? null : graph.nodeById(selectedId);
+    final gvNode = selectedId == null ? null : nodesById[selectedId];
+    if (node == null || gvNode == null) return const SizedBox.shrink();
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return AnimatedBuilder(
+          animation: transformController,
+          builder: (context, _) {
+            final viewport = constraints.biggest;
+            final nodeRect = MatrixUtils.transformRect(
+              transformController.value,
+              gvNode.position & gvNode.size,
+            );
+
+            // 오른쪽에 카드가 들어갈 자리가 있으면 오른쪽에, 아니면 왼쪽에 —
+            // 어느 쪽도 넉넉하지 않으면 더 넓은 쪽을 고른다.
+            final spaceRight = viewport.width - nodeRect.right;
+            final spaceLeft = nodeRect.left;
+            final placeRight =
+                spaceRight >= _cardWidth + _gap || spaceRight >= spaceLeft;
+            final rawLeft = placeRight
+                ? nodeRect.right + _gap
+                : nodeRect.left - _gap - _cardWidth;
+            final maxLeft = viewport.width - _cardWidth;
+            final left = rawLeft < 0
+                ? 0.0
+                : (maxLeft > 0 && rawLeft > maxLeft ? maxLeft : rawLeft);
+
+            final rawTop = nodeRect.center.dy - _cardMaxHeight / 2;
+            final maxTop = viewport.height - _cardMaxHeight;
+            final top = rawTop < 0
+                ? 0.0
+                : (maxTop > 0 && rawTop > maxTop ? maxTop : rawTop);
+
+            return Stack(
+              children: [
+                Positioned(
+                  left: left,
+                  top: top,
+                  child: NodeDetailCard(
+                    node: node,
+                    graph: graph,
+                    onClose: () =>
+                        ref.read(selectedNodeIdProvider.notifier).state = null,
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+/// "내 이력 가져오기" — 아이콘만 남긴 버전. 마지막 동기화 시각은 라벨 대신
+/// 툴팁으로 보여준다(Figma 좌하단 버튼 스택).
+class _SyncFab extends ConsumerWidget {
+  const _SyncFab();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final sync = ref.watch(syncControllerProvider);
+    final synced = sync.lastSyncedAt;
+    final message = synced == null
+        ? '내 이력 가져오기'
+        : '마지막 동기화 '
+            '${synced.hour.toString().padLeft(2, '0')}:'
+            '${synced.minute.toString().padLeft(2, '0')}';
+
+    final style = nodeStyleOfState(NodeState.unknown);
+    return Tooltip(
+      message: message,
+      child: FloatingActionButton.small(
+        heroTag: 'graph-sync',
+        backgroundColor: style.fill,
+        foregroundColor: style.text,
+        elevation: 1,
+        shape: CircleBorder(side: BorderSide(color: style.border, width: 1.4)),
+        onPressed: sync.inProgress
+            ? null
+            : () => ref.read(syncControllerProvider.notifier).sync(),
+        child: sync.inProgress
+            ? SizedBox(
+                width: 14,
+                height: 14,
+                child: CircularProgressIndicator(
+                    strokeWidth: 2, color: style.text),
+              )
+            : const Icon(Icons.sync),
+      ),
+    );
+  }
+}
+
+/// 캔버스 위에 뜨는 아이콘 버튼 공용 스타일 — "추천 개념"(모르는 노드) 카드와
+/// 같은 톤(흰 배경·회색 테두리)으로 맞춘다.
+class _CanvasFab extends StatelessWidget {
+  const _CanvasFab({
+    required this.tooltip,
+    required this.heroTag,
+    required this.onPressed,
+    required this.icon,
+  });
+
+  final String tooltip;
+  final String heroTag;
+  final VoidCallback? onPressed;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = nodeStyleOfState(NodeState.unknown);
+    return Tooltip(
+      message: tooltip,
+      child: FloatingActionButton.small(
+        heroTag: heroTag,
+        backgroundColor: style.fill,
+        foregroundColor: style.text,
+        elevation: 1,
+        shape: CircleBorder(side: BorderSide(color: style.border, width: 1.4)),
+        onPressed: onPressed,
+        child: Icon(icon),
+      ),
     );
   }
 }
@@ -223,20 +491,22 @@ class _ConceptNode extends ConsumerWidget {
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
         color: style.fill,
-        borderRadius: BorderRadius.circular(node.isPrereq ? 20 : 10),
+        // 타원형 — 완전히 둥글게 잡아 실제 높이가 얼마든 알약 모양으로 보인다.
+        borderRadius: BorderRadius.circular(999),
+        // 평소엔 테두리를 안 보이게 투명으로만 둔다 — Border 자체를 null로
+        // 빼면 두께만큼 박스 크기가 변해서 위 클래스 문서에 적힌 "선택돼도
+        // 크기가 변하지 않게" 불변식이 깨지고 그래프가 튄다.
         border: Border.all(
-          color: selected ? AppColors.pink : style.border,
+          color: selected ? AppColors.pink : Colors.transparent,
           width: 1.8,
         ),
-        boxShadow: selected
-            ? [
-                BoxShadow(
-                  color: style.border.withValues(alpha: 0.35),
-                  blurRadius: 14,
-                  spreadRadius: 1,
-                ),
-              ]
-            : null,
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x14000000),
+            blurRadius: 6,
+            offset: Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -244,22 +514,12 @@ class _ConceptNode extends ConsumerWidget {
         children: [
           Text(
             node.concept,
-            style: TextStyle(
-              color: style.text,
+            style: const TextStyle(
+              color: AppColors.textPrimary,
               fontSize: 13,
               fontWeight: FontWeight.w600,
             ),
           ),
-          if (node.isPrereq) ...[
-            const SizedBox(height: 3),
-            Text(
-              '선행개념',
-              style: TextStyle(
-                color: style.text.withValues(alpha: 0.65),
-                fontSize: 10,
-              ),
-            ),
-          ],
         ],
       ),
     );

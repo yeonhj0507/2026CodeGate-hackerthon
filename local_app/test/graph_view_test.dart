@@ -1,6 +1,8 @@
+import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:prober_local/data/db/database.dart';
 import 'package:prober_local/data/dto/graph.dart';
 import 'package:prober_local/providers/providers.dart';
 import 'package:prober_local/ui/graph_view.dart';
@@ -48,8 +50,14 @@ void main() {
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
 
+    // 좌하단 동기화 버튼이 syncControllerProvider 를 거쳐 실 DB 까지 물고
+    // 있어서, 테스트끼리 같은 DB 인스턴스를 공유하지 않게 매번 새로 띄운다.
+    final db = AppDatabase(NativeDatabase.memory());
+    addTearDown(db.close);
+
     await tester.pumpWidget(
       ProviderScope(
+        overrides: [databaseProvider.overrideWithValue(db)],
         child: MaterialApp(
           home: Scaffold(body: ThoughtMapView(graph: graph)),
         ),

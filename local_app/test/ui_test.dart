@@ -60,14 +60,6 @@ void main() {
       expect(find.text('물가상승률'), findsOneWidget);
     });
 
-    testWidgets('선행개념 노드에 라벨을 붙인다', (tester) async {
-      await tester.pumpWidget(host(const ThoughtMapView(graph: graph)));
-      await tester.pumpAndSettle();
-
-      // 물가상승률만 isPrereq = true.
-      expect(find.text('선행개념'), findsOneWidget);
-    });
-
     testWidgets('노드를 탭하면 선택 상태가 바뀐다', (tester) async {
       final container = ProviderContainer();
       addTearDown(container.dispose);
@@ -88,12 +80,17 @@ void main() {
 
       expect(container.read(selectedNodeIdProvider), isNull);
 
-      await tester.tap(find.text('실질금리'));
+      // 선택되면 상세 카드가 노드 옆에 뜨는데, 카드 제목도 같은 텍스트라
+      // find.text 가 둘을 구분 못 한다 — 선택 전(유일할 때) 좌표를 잡아
+      // 이후로는 좌표로만 탭한다.
+      final nodeCenter = tester.getCenter(find.text('실질금리'));
+
+      await tester.tapAt(nodeCenter);
       await tester.pumpAndSettle();
       expect(container.read(selectedNodeIdProvider), 'c_실질금리');
 
       // 같은 노드를 다시 누르면 선택이 풀린다.
-      await tester.tap(find.text('실질금리'));
+      await tester.tapAt(nodeCenter);
       await tester.pumpAndSettle();
       expect(container.read(selectedNodeIdProvider), isNull);
     });
@@ -170,13 +167,6 @@ void main() {
           reason: '진단에서 놓친 개념',
         ),
       ],
-      expansionConcepts: [
-        ExpansionRecommendation(
-          conceptId: 'c_기준금리',
-          conceptTag: '기준금리',
-          reason: ExpansionReason.retry,
-        ),
-      ],
       articles: [
         ArticleRecommendation(
           title: '30초 만에 이해하는 실질금리',
@@ -187,34 +177,16 @@ void main() {
       ],
     );
 
-    testWidgets('세 섹션으로 나눠 보여준다(명세 §5.3)', (tester) async {
+    testWidgets('두 섹션으로 나눠 보여준다(명세 §5.3)', (tester) async {
       await tester
           .pumpWidget(host(const RecommendationPanel(recommendations: recs, graph: Graph.empty)));
       await tester.pumpAndSettle();
 
       expect(find.text('모를 것 같은 개념'), findsOneWidget);
-      expect(find.text('확장 개념'), findsOneWidget);
       expect(find.text('읽을 만한 기사'), findsOneWidget);
       expect(find.text('실질금리'), findsOneWidget);
-      expect(find.text('기준금리'), findsOneWidget);
-      // 서버는 신호 종류만 주고 문구는 앱이 만든다.
-      expect(find.text(ExpansionReason.retry.label), findsOneWidget);
       expect(find.text('30초 만에 이해하는 실질금리'), findsOneWidget);
       expect(find.textContaining('한겨레'), findsOneWidget);
-    });
-
-    testWidgets('확장 추천이 없으면 콜드스타트 안내를 보여준다(명세 §4.4 한계)',
-        (tester) async {
-      const onlyGap = Recommendations(
-        gapConcepts: [
-          ConceptRecommendation(conceptId: 'c_a', conceptTag: 'A'),
-        ],
-      );
-      await tester
-          .pumpWidget(host(const RecommendationPanel(recommendations: onlyGap, graph: Graph.empty)));
-      await tester.pumpAndSettle();
-
-      expect(find.textContaining('아직 확장 추천이 없어요'), findsOneWidget);
     });
 
     // 개념 카드를 누르면 **이 패널 안에서** 상세가 열린다. 예전에는 지도 선택도
@@ -236,25 +208,6 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(container.read(inlineConceptDetailProvider), 'c_실질금리');
-      expect(container.read(selectedNodeIdProvider), isNull);
-    });
-
-    testWidgets('확장 추천을 누르면 패널 상세가 열리고, 지도 선택은 그대로다', (tester) async {
-      final container = ProviderContainer();
-      addTearDown(container.dispose);
-
-      await tester.pumpWidget(UncontrolledProviderScope(
-        container: container,
-        child: const MaterialApp(
-          home: Scaffold(body: RecommendationPanel(recommendations: recs, graph: Graph.empty)),
-        ),
-      ));
-      await tester.pumpAndSettle();
-
-      await tester.tap(find.text('기준금리'));
-      await tester.pumpAndSettle();
-
-      expect(container.read(inlineConceptDetailProvider), 'c_기준금리');
       expect(container.read(selectedNodeIdProvider), isNull);
     });
 

@@ -10,9 +10,9 @@ import 'widgets/panel_header.dart';
 
 /// 추천 열람(명세 §5.3).
 ///
-/// 서버가 그래프와 함께 돌려준 **세 종류**를 그대로 세 섹션으로 나눈다
-/// — 결핍 보완 / 확장(심화) / 기사. 기사 추천 소스는 신문사 제휴 자체
-/// 데이터셋(명세 §4.4 확정)이라 외부 브라우저로 연다.
+/// 서버가 그래프와 함께 돌려준 결핍 보완 개념과 기사를 두 섹션으로 나눈다.
+/// 기사 추천 소스는 신문사 제휴 자체 데이터셋(명세 §4.4 확정)이라 외부
+/// 브라우저로 연다.
 ///
 /// 개념을 누르면 이 탭을 벗어나지 않고 **인라인으로** 상세를 편다
 /// ([inlineConceptDetailProvider]). 패널이 다른 탭으로 넘어가면 안 되기 때문에
@@ -69,32 +69,18 @@ class RecommendationPanel extends ConsumerWidget {
                   ),
                 )
               : ListView(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+                  padding: const EdgeInsets.fromLTRB(4, 8, 4, 8),
                   children: [
                     if (recommendations.gapConcepts.isNotEmpty) ...[
                       const _SectionTitle('모를 것 같은 개념'),
-                      const SizedBox(height: 10),
+                      const SizedBox(height: 8),
                       for (final c in recommendations.gapConcepts)
                         _ConceptCard(recommendation: c),
                     ],
-                    // 확장 추천은 콜드스타트에 비는 게 정상이라(명세 §4.4 한계)
-                    // 섹션을 숨기는 대신 안내를 띄운다 — 없어진 게 아니라 아직
-                    // 이르다는 뜻이다.
-                    const SizedBox(height: 22),
-                    const _SectionTitle('확장 개념'),
-                    const SizedBox(height: 10),
-                    if (recommendations.expansionConcepts.isEmpty)
-                      const _EmptyHint(
-                        text: '아직 확장 추천이 없어요.\n'
-                            '개념을 이해완료하면 여기에서 다음 단계를 알려드릴게요.',
-                      )
-                    else
-                      for (final e in recommendations.expansionConcepts)
-                        _ExpansionCard(recommendation: e),
                     if (recommendations.articles.isNotEmpty) ...[
-                      const SizedBox(height: 22),
+                      const SizedBox(height: 14),
                       const _SectionTitle('읽을 만한 기사'),
-                      const SizedBox(height: 10),
+                      const SizedBox(height: 8),
                       for (final a in recommendations.articles)
                         _ArticleCard(recommendation: a),
                     ],
@@ -156,47 +142,6 @@ class _ConceptCard extends ConsumerWidget {
   }
 }
 
-/// 확장 개념 카드. 이해한 개념을 발판 삼은 다음 걸음이다.
-class _ExpansionCard extends ConsumerWidget {
-  const _ExpansionCard({required this.recommendation});
-
-  final ExpansionRecommendation recommendation;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return _CardShell(
-      onTap: () => _openConcept(ref, recommendation.conceptId),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  recommendation.conceptTag,
-                  style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textPrimary),
-                ),
-              ),
-              if (recommendation.reason == ExpansionReason.retry)
-                const Icon(Icons.replay, size: 15, color: AppColors.pink),
-            ],
-          ),
-          const SizedBox(height: 6),
-          // 서버는 신호 종류만 주고 문구는 앱이 만든다(계약 §4).
-          Text(
-            recommendation.reason.label,
-            style: const TextStyle(
-                fontSize: 12, color: AppColors.textMuted, height: 1.5),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _ArticleCard extends StatelessWidget {
   const _ArticleCard({required this.recommendation});
 
@@ -252,7 +197,7 @@ class _ArticleCard extends StatelessWidget {
   }
 }
 
-/// 추천 탭의 카드 한 장. 라이트 팔레트에서는 그림자 대신 옅은 테두리로 나눈다.
+/// 추천 탭의 카드 한 장. 테두리 없이 옅은 그림자로만 배경과 나눈다.
 class _CardShell extends StatelessWidget {
   const _CardShell({required this.child, this.onTap});
 
@@ -262,18 +207,20 @@ class _CardShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      decoration: BoxDecoration(
-        color: AppColors.panelBg,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: AppColors.border),
+      margin: const EdgeInsets.only(bottom: 6),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.all(Radius.circular(10)),
+        boxShadow: [
+          BoxShadow(color: Color(0x14000000), blurRadius: 6, offset: Offset(0, 2)),
+        ],
       ),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(10),
           onTap: onTap,
-          child: Padding(padding: const EdgeInsets.all(14), child: child),
+          child: Padding(padding: const EdgeInsets.all(12), child: child),
         ),
       ),
     );
@@ -292,24 +239,6 @@ class _SectionTitle extends StatelessWidget {
             fontSize: 12,
             fontWeight: FontWeight.bold,
             color: AppColors.textPrimary));
-  }
-}
-
-class _EmptyHint extends StatelessWidget {
-  const _EmptyHint({required this.text});
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-      child: Text(
-        text,
-        style: const TextStyle(
-            fontSize: 12, color: AppColors.textMuted, height: 1.6),
-      ),
-    );
   }
 }
 
@@ -374,11 +303,11 @@ class _ConceptDetailView extends ConsumerWidget {
                 fontSize: 12.5, height: 1.6, color: AppColors.textPrimary),
           ),
           if (node.oxQuiz != null) ...[
-            const SizedBox(height: 18),
+            const SizedBox(height: 14),
             _OxQuizCard(quiz: node.oxQuiz!, nodeId: node.id),
           ],
           if (related.isNotEmpty) ...[
-            const SizedBox(height: 18),
+            const SizedBox(height: 14),
             const Text('연관 개념',
                 style: TextStyle(
                     fontSize: 11.5,
@@ -459,9 +388,9 @@ class _OxQuizCardState extends ConsumerState<_OxQuizCard> {
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: AppColors.panelBg,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: AppColors.border),
       ),

@@ -13,6 +13,7 @@ abstract final class AppColors {
   static const pinkStrong = Color(0xFFFF4D6D);
   static const pinkBg = Color(0xFFFFE3E9);
   static const pinkBgSoft = Color(0xFFFFE8EE);
+  static const pinkBgFaint = Color(0xFFFFFBFC);
   static const pinkMuted = Color(0xFFC2808F);
   static const gray = Color(0xFF9CA0A8);
 
