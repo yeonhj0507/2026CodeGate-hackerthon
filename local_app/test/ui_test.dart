@@ -5,7 +5,7 @@ import 'package:prober_local/data/dto/graph.dart';
 import 'package:prober_local/data/dto/recommendation.dart';
 import 'package:prober_local/providers/providers.dart';
 import 'package:prober_local/ui/graph_view.dart';
-import 'package:prober_local/ui/node_detail_panel.dart';
+import 'package:prober_local/ui/node_detail_card.dart';
 import 'package:prober_local/ui/recommendation_panel.dart';
 
 /// 화면 단위 검증. Windows 네이티브 빌드 없이 돌아간다.
@@ -123,10 +123,14 @@ void main() {
     });
   });
 
-  group('NodeDetailPanel', () {
+  group('NodeDetailCard', () {
     testWidgets('재요약·출처 기사·연결 개념을 보여준다', (tester) async {
       await tester.pumpWidget(host(
-        NodeDetailPanel(node: graph.nodeById('c_실질금리')!, graph: graph),
+        NodeDetailCard(
+          node: graph.nodeById('c_실질금리')!,
+          graph: graph,
+          onClose: () {},
+        ),
       ));
       await tester.pumpAndSettle();
 
@@ -145,7 +149,11 @@ void main() {
 
     testWidgets('summaryMeta가 없으면 재요약 섹션을 숨긴다', (tester) async {
       await tester.pumpWidget(host(
-        NodeDetailPanel(node: graph.nodeById('c_기준금리')!, graph: graph),
+        NodeDetailCard(
+          node: graph.nodeById('c_기준금리')!,
+          graph: graph,
+          onClose: () {},
+        ),
       ));
       await tester.pumpAndSettle();
 

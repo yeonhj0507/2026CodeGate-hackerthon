@@ -90,13 +90,51 @@ void main() {
 
   // ─── 셸: 세 탭이 존재하고 서로 오간다 ───────────────────────────────────
 
+  /// 우측 패널은 접힌 채로 시작한다. 세 갈래는 상단 아이콘으로 연다.
+  Future<void> openPanel(WidgetTester tester, String tooltip) async {
+    await tester.tap(find.byTooltip(tooltip));
+    await tester.pumpAndSettle();
+  }
+
   group('홈 셸', () {
-    testWidgets('추천·탐색·보관함 세 갈래가 모두 있다', (tester) async {
+    testWidgets('추천·탐색·보관함 세 갈래를 여는 버튼이 있다', (tester) async {
       await pumpHome(tester, graph: graph);
 
+      expect(find.byTooltip('추천'), findsOneWidget);
+      expect(find.byTooltip('탐색'), findsOneWidget);
+      expect(find.byTooltip('보관함'), findsOneWidget);
+    });
+
+    testWidgets('패널은 접힌 채로 시작하고, 눌러야 열린다', (tester) async {
+      await pumpHome(tester, graph: graph);
+
+      // 처음엔 지도만 보인다. 패널 제목(PanelHeader)이 곧 열림 여부다.
+      expect(find.text('추천'), findsNothing);
+
+      await openPanel(tester, '추천');
       expect(find.text('추천'), findsOneWidget);
+    });
+
+    testWidgets('세 갈래를 서로 오갈 수 있다', (tester) async {
+      await pumpHome(tester, graph: graph);
+
+      await openPanel(tester, '탐색');
       expect(find.text('탐색'), findsOneWidget);
+
+      await openPanel(tester, '보관함');
       expect(find.text('보관함'), findsOneWidget);
+      expect(find.text('탐색'), findsNothing, reason: '한 번에 한 갈래만 열린다');
+    });
+
+    testWidgets('패널을 닫으면 지도만 남는다', (tester) async {
+      await pumpHome(tester, graph: graph);
+      await openPanel(tester, '추천');
+
+      await tester.tap(find.byTooltip('패널 닫기'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('추천'), findsNothing);
+      expect(find.text('환헤지'), findsWidgets, reason: '지도는 그대로 남아야 한다');
     });
 
     testWidgets('생각 지도가 우측 패널과 함께 뜬다', (tester) async {
@@ -132,10 +170,8 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    Future<void> openExploreTab(WidgetTester tester) async {
-      await tester.tap(find.text('탐색'));
-      await tester.pumpAndSettle();
-    }
+    Future<void> openExploreTab(WidgetTester tester) async =>
+        openPanel(tester, '탐색');
 
     testWidgets('키워드를 담고 버튼을 눌러야 /explore 가 나간다', (tester) async {
       await pumpHome(tester, graph: graph);
@@ -205,8 +241,7 @@ void main() {
       await pumpHome(tester, graph: graph);
       final before = api.updateCalls;
 
-      await tester.tap(find.text('보관함'));
-      await tester.pumpAndSettle();
+      await openPanel(tester, '보관함');
 
       expect(find.text('환율 기사'), findsOneWidget);
       // 학습 데이터 원본은 로컬이다(명세 §4.5) — 보관함은 그래프에서 역산한다.
