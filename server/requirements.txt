@@ -1,0 +1,13 @@
+# --- Prober Auth Service (담당2: 서버 인증/계정) ---
+fastapi>=0.110
+uvicorn[standard]>=0.29
+SQLAlchemy[asyncio]>=2.0
+asyncpg>=0.29
+alembic>=1.13
+pydantic[email]>=2.6
+pydantic-settings>=2.2
+passlib[bcrypt]>=1.7.4
+bcrypt==4.0.1            # passlib 1.7.4 호환 (4.1+ 에서 __about__ 경고/에러 방지)
+PyJWT>=2.8
+slowapi>=0.1.9
+aiosqlite>=0.19         # 로컬 스모크 테스트용(Postgres 없이 빠른 확인). 운영은 Postgres.
