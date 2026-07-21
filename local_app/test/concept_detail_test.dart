@@ -1,6 +1,8 @@
+import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:prober_local/data/db/database.dart';
 import 'package:prober_local/data/dto/graph.dart';
 import 'package:prober_local/data/dto/recommendation.dart';
 import 'package:prober_local/providers/providers.dart';
@@ -48,7 +50,14 @@ void main() {
   );
 
   Future<ProviderContainer> pumpPanel(WidgetTester tester) async {
-    final container = ProviderContainer();
+    // O/X 정답은 로컬 DB에 상태·XP를 쓴다. 인메모리로 갈아끼우지 않으면
+    // 테스트가 실제 앱 DB 파일을 건드린다.
+    final db = AppDatabase(NativeDatabase.memory());
+    addTearDown(db.close);
+
+    final container = ProviderContainer(
+      overrides: [databaseProvider.overrideWithValue(db)],
+    );
     addTearDown(container.dispose);
 
     await tester.pumpWidget(

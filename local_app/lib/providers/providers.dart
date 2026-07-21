@@ -257,6 +257,18 @@ final xpProvider = StateNotifierProvider<XpController, XpSnapshot>((ref) {
   return XpController(ref.watch(thoughtmapRepositoryProvider));
 });
 
+/// 추천 탭 O/X 정답 처리 — 개념을 이해완료로 올리고 XP를 반영한다.
+///
+/// 그래프는 drift 스트림을 타고 [graphProvider]로 저절로 흘러나오지만, XP는
+/// raw SQL 테이블이라 배지를 직접 당겨야 한다(동기화 경로와 같은 사정).
+/// 지급된 이벤트를 돌려주므로 호출부가 "+N XP"를 안내할 수 있다.
+Future<List<XpEvent>> solveOxQuiz(WidgetRef ref, String nodeId) async {
+  final granted =
+      await ref.read(thoughtmapRepositoryProvider).markUnderstoodByOxQuiz(nodeId);
+  if (granted.isNotEmpty) await ref.read(xpProvider.notifier).refresh();
+  return granted;
+}
+
 // ── 탐색 탭 ────────────────────────────────────────────────────────────────
 
 /// 탐색용으로 고른 키워드(노드 id). 2~3개를 묶어 "더 탐색하기"에 넘긴다.

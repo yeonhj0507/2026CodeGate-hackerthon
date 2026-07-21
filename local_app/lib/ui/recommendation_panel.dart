@@ -375,7 +375,7 @@ class _ConceptDetailView extends ConsumerWidget {
           ),
           if (node.oxQuiz != null) ...[
             const SizedBox(height: 18),
-            _OxQuizCard(quiz: node.oxQuiz!),
+            _OxQuizCard(quiz: node.oxQuiz!, nodeId: node.id),
           ],
           if (related.isNotEmpty) ...[
             const SizedBox(height: 18),
@@ -407,28 +407,48 @@ class _ConceptDetailView extends ConsumerWidget {
   }
 }
 
-/// O/X 한 문항. 채점은 로컬에서만 한다 — 서버는 이 답을 알 필요가 없다.
+/// O/X 한 문항. 채점은 로컬에서 한다 — 서버는 이 답을 알 필요가 없다.
 ///
 /// 문항은 서버가 사용자의 **실제 오답 선지**를 그대로 진술문으로 만들어 준 것이라
 /// (LLM 호출 없음, server `merge.py:_attach_ox_quiz`), 여기서 다시 풀어 보는 것이
 /// 곧 오답 복기다. 그래서 해설이 따로 없다 — 진술문 자체가 자기가 틀렸던 문장이다.
-class _OxQuizCard extends StatefulWidget {
-  const _OxQuizCard({required this.quiz});
+///
+/// **맞히면 그 개념이 이해완료로 올라가고 XP가 붙는다.** 로컬이 학습 데이터의
+/// 원본이라(명세 §4.5) 서버 왕복이 필요 없고, 다음 동기화에서 되돌아가지도
+/// 않는다 — 서버는 이번 스크랩에 등장한 개념만 상태를 덮기 때문이다.
+class _OxQuizCard extends ConsumerStatefulWidget {
+  const _OxQuizCard({required this.quiz, required this.nodeId});
 
   final OxQuiz quiz;
+  final String nodeId;
 
   @override
-  State<_OxQuizCard> createState() => _OxQuizCardState();
+  ConsumerState<_OxQuizCard> createState() => _OxQuizCardState();
 }
 
-class _OxQuizCardState extends State<_OxQuizCard> {
+class _OxQuizCardState extends ConsumerState<_OxQuizCard> {
   bool? _picked;
+
+  /// 정답으로 받은 XP. 0이면 안내를 띄우지 않는다(이미 이해완료였던 경우 등).
+  int _xpGained = 0;
 
   @override
   void didUpdateWidget(_OxQuizCard old) {
     super.didUpdateWidget(old);
     // 다른 개념으로 넘어가면 O/X 를 처음 상태로 되돌린다.
-    if (old.quiz.statement != widget.quiz.statement) _picked = null;
+    if (old.quiz.statement != widget.quiz.statement) {
+      _picked = null;
+      _xpGained = 0;
+    }
+  }
+
+  Future<void> _pick(bool value) async {
+    setState(() => _picked = value);
+    if (value != widget.quiz.answer) return;
+
+    final granted = await solveOxQuiz(ref, widget.nodeId);
+    if (!mounted) return;
+    setState(() => _xpGained = granted.fold(0, (sum, e) => sum + e.amount));
   }
 
   @override
@@ -465,13 +485,13 @@ class _OxQuizCardState extends State<_OxQuizCard> {
               _OxButton(
                 label: 'O',
                 selected: picked == true,
-                onTap: answered ? null : () => setState(() => _picked = true),
+                onTap: answered ? null : () => _pick(true),
               ),
               const SizedBox(width: 8),
               _OxButton(
                 label: 'X',
                 selected: picked == false,
-                onTap: answered ? null : () => setState(() => _picked = false),
+                onTap: answered ? null : () => _pick(false),
               ),
             ],
           ),
@@ -488,6 +508,18 @@ class _OxQuizCardState extends State<_OxQuizCard> {
                 color: correct ? AppColors.textPrimary : AppColors.pink,
               ),
             ),
+            if (_xpGained > 0) ...[
+              const SizedBox(height: 6),
+              Text(
+                '이해완료로 올렸어요.  +$_xpGained XP',
+                style: const TextStyle(
+                  fontSize: 11.5,
+                  height: 1.5,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.pink,
+                ),
+              ),
+            ],
           ],
         ],
       ),
