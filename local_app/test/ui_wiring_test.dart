@@ -126,6 +126,50 @@ void main() {
       expect(find.text('탐색'), findsNothing, reason: '한 번에 한 갈래만 열린다');
     });
 
+    testWidgets('추천을 열면 확장 후보가 지도에 임시로 뜨고, 닫으면 사라진다', (tester) async {
+      // 카드에 낱말만 뜨면 그 개념이 내가 아는 것 중 무엇에서 나왔는지 안 보인다.
+      api.updateResult = const ThoughtmapUpdateOut(
+        graph: Graph.empty,
+        recommendations: Recommendations(
+          expansionConcepts: [
+            ExpansionRecommendation(
+              conceptId: 'c_레버리지',
+              conceptTag: '레버리지',
+              viaConcepts: ['c_환헤지'],
+            ),
+          ],
+        ),
+      );
+
+      await pumpHome(tester, graph: graph);
+      expect(find.text('레버리지'), findsNothing, reason: '패널이 닫혀 있으면 지도에 없다');
+
+      await openPanel(tester, '추천');
+      // 카드에 한 번, 지도에 한 번.
+      expect(find.text('레버리지'), findsNWidgets(2));
+
+      await tester.tap(find.byTooltip('패널 닫기'));
+      await tester.pumpAndSettle();
+      expect(find.text('레버리지'), findsNothing);
+    });
+
+    testWidgets('임시 노드는 개념 집계에 잡히지 않는다', (tester) async {
+      api.updateResult = const ThoughtmapUpdateOut(
+        graph: Graph.empty,
+        recommendations: Recommendations(
+          expansionConcepts: [
+            ExpansionRecommendation(conceptId: 'c_레버리지', conceptTag: '레버리지'),
+          ],
+        ),
+      );
+
+      await pumpHome(tester, graph: graph);
+      await openPanel(tester, '추천');
+
+      // 내가 쌓은 개념은 2개 그대로다 — 추천이 숫자를 부풀리면 안 된다.
+      expect(find.textContaining('개념 2'), findsOneWidget);
+    });
+
     testWidgets('패널을 닫으면 지도만 남는다', (tester) async {
       await pumpHome(tester, graph: graph);
       await openPanel(tester, '추천');

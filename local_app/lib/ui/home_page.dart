@@ -6,6 +6,7 @@ import '../data/dto/graph.dart';
 import '../providers/providers.dart';
 import 'app_colors.dart';
 import 'archive_panel.dart';
+import 'expansion_overlay.dart';
 import 'explore_panel.dart';
 import 'graph_view.dart';
 import 'node_detail_card.dart';
@@ -45,7 +46,15 @@ class _HomePageState extends ConsumerState<HomePage> {
     _listenForSyncFeedback();
 
     final graph = graphAsync.valueOrNull ?? Graph.empty;
-    final selected = selectedId == null ? null : graph.nodeById(selectedId);
+
+    // 추천 패널이 열려 있는 동안만 확장 후보를 지도에 임시 노드로 얹는다.
+    // 카드에 낱말만 뜨면 그 개념이 내가 아는 것 중 무엇에서 나왔는지 안 보인다.
+    final displayGraph = mode == RightPanelMode.recommendations
+        ? withExpansionCandidates(graph, sync.recommendations.expansionConcepts)
+        : graph;
+
+    // 상세도 표시용 그래프에서 찾는다 — 임시 노드를 눌렀을 때 빈손이 되지 않게.
+    final selected = selectedId == null ? null : displayGraph.nodeById(selectedId);
 
     return Scaffold(
       backgroundColor: AppColors.canvasBg,
@@ -61,7 +70,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                 child: graph.isEmpty
                     ? const OnboardingView()
                     : _MainContent(
-                        graph: graph,
+                        graph: displayGraph,
                         sync: sync,
                         mode: mode,
                         selected: selected,

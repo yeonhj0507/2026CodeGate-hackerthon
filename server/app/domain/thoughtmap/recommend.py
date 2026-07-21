@@ -31,7 +31,9 @@ from app.domain.search.base import SearchProvider, get_search_provider
 from app.domain.thoughtmap.merge import normalize_concept
 
 MAX_CONCEPTS = 8
-MAX_EXPANSION = 5
+# 확장은 지도 위에 임시 노드로 함께 그려진다. 많이 뿌리면 지도가 추천으로 뒤덮여
+# 정작 내가 쌓은 개념이 묻히므로 상위 2개만 남긴다. 없으면 없다고 말하는 게 낫다.
+MAX_EXPANSION = 2
 MAX_RETRY = 5
 MAX_ARTICLES = 5
 
