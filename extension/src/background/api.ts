@@ -149,6 +149,74 @@ export async function sendQuizRequest(title: string, body: string): Promise<Quiz
   return data.quiz
 }
 
+/** NDJSON 한 줄. 서버 `/quiz/stream` 계약(quiz/router.py). */
+type StreamLine =
+  | { item: Quiz }
+  | { done: true; total: number }
+  | { error: { code: string; message: string } }
+
+/**
+ * POST /quiz/stream — 문항이 완성되는 대로 `onItem` 으로 넘긴다. 총 개수를 반환.
+ *
+ * 스트리밍이 막히면(구버전 서버·프록시·네트워크) 조용히 기존 /quiz 로 폴백한다.
+ * 단 **문항을 하나라도 넘긴 뒤 끊긴 경우는 폴백하지 않는다** — 다시 받으면 같은
+ * 문항이 두 번 출제된다. 그때는 받은 만큼만 쓰고 에러를 올린다.
+ */
+export async function streamQuizRequest(
+  title: string,
+  body: string,
+  onItem: (quiz: Quiz) => void,
+): Promise<number> {
+  if (viteFlag('VITE_MOCK_QUIZ')) {
+    const mock = buildMockQuizzes(body)
+    for (const quiz of mock) onItem(quiz)
+    return mock.length
+  }
+
+  let delivered = 0
+  try {
+    const res = await fetch(ENDPOINTS.QUIZ_STREAM, {
+      method: 'POST',
+      headers: await buildHeaders(),
+      body: JSON.stringify({ articleTitle: title, articleBody: body }),
+    })
+    if (!res.ok) throw new Error(`quiz stream failed: ${res.status}`)
+    if (!res.body) throw new Error('quiz stream: no body')
+
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+
+      // 줄 단위로만 파싱한다. 마지막 조각은 불완전할 수 있으므로 버퍼에 남긴다.
+      let newline: number
+      while ((newline = buffer.indexOf('\n')) >= 0) {
+        const line = buffer.slice(0, newline).trim()
+        buffer = buffer.slice(newline + 1)
+        if (!line) continue
+
+        const parsed = JSON.parse(line) as StreamLine
+        if ('item' in parsed) {
+          delivered += 1
+          onItem(parsed.item)
+        } else if ('error' in parsed) {
+          throw new Error(parsed.error.message)
+        }
+      }
+    }
+    return delivered
+  } catch (err) {
+    if (delivered > 0) throw err as Error // 중복 출제 방지 — 폴백하지 않는다
+    const quiz = await sendQuizRequest(title, body)
+    for (const item of quiz) onItem(item)
+    return quiz.length
+  }
+}
+
 /** 큐에 쌓인 1건. attempts는 head에서 실패한 횟수(poison message 판별용, T4.9 finding #2). */
 interface RetryEntry {
   payload: ScrapRequest

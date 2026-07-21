@@ -7,6 +7,7 @@
 // =============================================================================
 
 import { useState } from 'react'
+import { useQuizFeed } from '../quiz-feed'
 import { useSession } from '../session'
 import { ProberLogo } from './ProberLogo'
 import { QuestionView } from './QuestionView'
@@ -23,6 +24,8 @@ export function Panel({ onEnd }: Props) {
   const submitAnswer = useSession((s) => s.submitAnswer)
   const dismissExplanation = useSession((s) => s.dismissExplanation)
   const flushResults = useSession((s) => s.flushResults)
+  const streaming = useQuizFeed((s) => s.streaming)
+  const ready = useQuizFeed((s) => s.ready)
 
   const solved = results.length
   const correct = results.filter((r) => r.correct).length
@@ -83,14 +86,28 @@ export function Panel({ onEnd }: Props) {
             <div className="ended-note">진단 결과를 저장했어요.</div>
           </div>
         ) : phase === 'IDLE' || !active ? (
-          <div className="idle">
-            <span className="emoji">📖</span>
-            <div>
-              기사를 읽어 내려가면
-              <br />
-              놓치기 쉬운 지점에서 질문이 나타나요.
+          // 낼 문항이 지금 없다. 아직 만드는 중이면 그 사실을 말해 준다 —
+          // 읽는 속도가 생성 속도를 앞지른 상태이고, 안 알려주면 "질문이 안 나온다"로 읽힌다.
+          streaming ? (
+            <div className="idle">
+              <span className="spinner" aria-hidden="true" />
+              <div>
+                읽는 속도가 더 빠르네요.
+                <br />
+                다음 질문을 만들고 있어요.
+              </div>
+              {ready > 0 && <div className="feed-note">지금까지 {ready}개 준비됨</div>}
             </div>
-          </div>
+          ) : (
+            <div className="idle">
+              <span className="emoji">📖</span>
+              <div>
+                기사를 읽어 내려가면
+                <br />
+                놓치기 쉬운 지점에서 질문이 나타나요.
+              </div>
+            </div>
+          )
         ) : (
           <QuestionView
             key={activeKey}

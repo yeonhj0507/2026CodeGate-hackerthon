@@ -24,21 +24,47 @@ import { createParagraphObserver } from './observer'
 import { createSessionQueue } from './session-bind'
 import { mountPanel, mountStartPrompt, unmountStartPrompt } from './ui/mount'
 import { useSession } from './session'
+import { useQuizFeed } from './quiz-feed'
 import { DETECT_RETRY_DELAYS_MS } from '../shared/constants'
 import { relationsOf } from '../shared/relations'
-import type { ChromeMessage, Quiz } from '../shared/types'
+import { QUIZ_PORT } from '../shared/types'
+import type {
+  ChromeMessage,
+  Quiz,
+  QuizStreamEvent,
+  StartQuizStream,
+} from '../shared/types'
 
 /** 이보다 문단이 적으면 기사로 보지 않고 중단(비기사 페이지에서 /quiz 남발 방지, §T3.2). */
 const MIN_ARTICLE_PARAGRAPHS = 3
 
-/** background에 퀴즈 트리를 요청한다(§T3.3). 실패·비정상 응답 시 throw. */
-async function requestQuiz(title: string, body: string): Promise<Quiz[]> {
-  const resp = (await chrome.runtime.sendMessage(
-    { type: 'REQUEST_QUIZ', title, body } satisfies ChromeMessage,
-  )) as ChromeMessage
-  if (resp.type === 'QUIZ_ERROR') throw new Error(resp.error)
-  if (resp.type === 'QUIZ_RESPONSE') return resp.quiz
-  throw new Error('unexpected quiz response')
+// 한 번에 받아 오던 requestQuiz 는 없앴다. 전체 대기(≈55초) 대신 스트림으로 받는다.
+// 폴백(기존 POST /quiz)은 background 의 streamQuizRequest 안에서 처리하므로
+// content 는 스트림 하나만 알면 된다.
+
+/** 퀴즈 스트림을 열고 도착하는 대로 콜백에 넘긴다. 반환값으로 스트림을 끊을 수 있다. */
+function openQuizStream(
+  title: string,
+  body: string,
+  handlers: {
+    onItem: (quiz: Quiz) => void
+    onDone: (total: number) => void
+    onError: (error: string) => void
+  },
+): () => void {
+  const port = chrome.runtime.connect({ name: QUIZ_PORT })
+
+  port.onMessage.addListener((event: QuizStreamEvent) => {
+    if (event.type === 'QUIZ_ITEM') handlers.onItem(event.quiz)
+    else if (event.type === 'QUIZ_DONE') handlers.onDone(event.total)
+    else if (event.type === 'QUIZ_STREAM_ERROR') handlers.onError(event.error)
+  })
+
+  // 서비스워커가 죽거나 재시작하면 done 없이 끊긴다. 대기 표시가 영원히 남지 않게 한다.
+  port.onDisconnect.addListener(() => handlers.onDone(-1))
+
+  port.postMessage({ type: 'START_QUIZ_STREAM', title, body } satisfies StartQuizStream)
+  return () => port.disconnect()
 }
 
 /** boot 결과. 실패 사유는 제안 카드·팝업이 사용자에게 그대로 보여준다. */
@@ -69,19 +95,14 @@ async function boot(): Promise<BootResult> {
     return { ok: false, reason: '이 페이지에서 기사 본문을 찾지 못했습니다.' }
   }
 
-  // 2) 퀴즈 트리 요청. 실패·빈 응답이면 패널 없이 중단.
-  let quizzes: Quiz[]
-  try {
-    quizzes = await requestQuiz(extract.title, extract.body)
-  } catch {
-    return { ok: false, reason: '질문을 만들지 못했습니다. 잠시 후 다시 시도해주세요.' }
-  }
-  if (quizzes.length === 0) {
-    return { ok: false, reason: '이 기사에서 낼 질문을 찾지 못했습니다.' }
-  }
-
-  // 3) 앵커 매칭.
-  const anchor = anchorQuizzes(quizzes, extract.paragraphs)
+  // 2) 첫 문항을 **기다리지 않는다**. 전체 트리 생성은 1분 가까이 걸리는데, 그동안
+  //    패널조차 안 뜨면 사용자는 빈 화면을 보고 있게 된다. 스트림을 열어 두고
+  //    도착하는 대로 채운다(서버 /quiz/stream). 실측 첫 문항 ≈ 17초.
+  const quizzes: Quiz[] = [] // 누적본. onEnd 의 relationsOf 가 이걸 쓴다.
+  const byParagraph = new Map<number, Quiz[]>()
+  const unanchored: Quiz[] = []
+  const passed = new Set<number>() // 사용자가 이미 지나친 문단
+  let streamEnded = false
 
   // 4~5) 제출 큐 + 관찰기(콜백은 아래에서 컨트롤러가 소유).
   const queue = createSessionQueue()
@@ -111,6 +132,7 @@ async function boot(): Promise<BootResult> {
         })
       queue.dispose() // phase 구독 해제 → 이후 pump 중단
       observer.disconnect() // 이후 문단 진입 발화 중단
+      closeStream() // 남은 문항을 더 받지 않는다
     },
   })
 
@@ -118,20 +140,64 @@ async function boot(): Promise<BootResult> {
   //    마지막 문단 도달 시 unanchored(하단 강등)를 큐 뒤에 1회 append(§2b-확정 결정4).
   const lastIdx = extract.paragraphs[extract.paragraphs.length - 1]?.idx
   let unanchoredFlushed = false
+  let reachedLast = false
+
+  /**
+   * unanchored 는 **스트림이 끝난 뒤에만** 낸다. 아직 오는 중이라면 뒤에 도착할
+   * 문항이 이 문단에 앵커될 수도 있어서, 먼저 하단으로 강등해 버리면 순서가 뒤집힌다.
+   */
+  const flushUnanchored = () => {
+    if (unanchoredFlushed || !reachedLast || !streamEnded) return
+    if (unanchored.length === 0) return
+    unanchoredFlushed = true
+    queue.enqueue(unanchored.splice(0))
+  }
+
   observer.onParagraphEnter((idx) => {
-    const qs = anchor.byParagraph.get(idx)
-    if (qs) queue.enqueue(qs)
-    if (!unanchoredFlushed && idx === lastIdx && anchor.unanchored.length > 0) {
-      unanchoredFlushed = true
-      queue.enqueue(anchor.unanchored)
-    }
+    passed.add(idx)
+    const qs = byParagraph.get(idx)
+    if (qs && qs.length > 0) queue.enqueue(qs.splice(0)) // 같은 문단 재진입 시 중복 출제 방지
+    if (idx === lastIdx) reachedLast = true
+    flushUnanchored()
   })
 
-  // 8) 앵커된 문단 + 마지막 문단(unanchored flush 트리거용)만 관찰.
-  const watched = extract.paragraphs.filter(
-    (p) => anchor.byParagraph.has(p.idx) || p.idx === lastIdx,
-  )
-  observer.observe(watched)
+  // 8) **전 문단을 관찰한다.** 어느 문단에 문항이 붙을지는 문항이 도착해 봐야 알고,
+  //    그때는 사용자가 이미 그 문단을 지났을 수 있다. 미리 다 걸어 두고 passed 로
+  //    "이미 지나갔음"을 기록해, 늦게 온 문항을 즉시 낼 수 있게 한다.
+  observer.observe(extract.paragraphs)
+
+  // 9) 스트림 개시. 도착할 때마다 앵커를 갱신하고, 지나친 문단이면 바로 큐에 넣는다.
+  useQuizFeed.getState().begin()
+  const closeStream = openQuizStream(extract.title, extract.body, {
+    onItem: (quiz) => {
+      quizzes.push(quiz)
+      useQuizFeed.getState().arrive()
+
+      // 앵커는 문항 1건씩 돌려도 결과가 같다(anchorQuizzes 는 순수 함수).
+      const anchored = anchorQuizzes([quiz], extract.paragraphs)
+      for (const [idx, qs] of anchored.byParagraph) {
+        if (passed.has(idx)) {
+          queue.enqueue(qs) // 이미 읽고 지나간 문단 — 기다릴 이유가 없다
+          continue
+        }
+        const bucket = byParagraph.get(idx)
+        if (bucket) bucket.push(...qs)
+        else byParagraph.set(idx, [...qs])
+      }
+      unanchored.push(...anchored.unanchored)
+      flushUnanchored()
+    },
+    onDone: () => {
+      streamEnded = true
+      useQuizFeed.getState().finish()
+      flushUnanchored()
+    },
+    onError: (error) => {
+      streamEnded = true
+      useQuizFeed.getState().fail(error)
+      flushUnanchored()
+    },
+  })
 
   // MVP: SPA 재이동/이탈 teardown은 Step 10 여력 시.
   return { ok: true }

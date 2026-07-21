@@ -128,6 +128,25 @@ ${FONT_IMPORTS}
 }
 .idle .emoji { font-size: 30px; }
 
+/* ── 문항 생성 대기 ── */
+/* 읽는 속도가 생성 속도를 앞질렀을 때. 이모지 자리에 스피너가 들어간다. */
+.idle .spinner {
+  width: 26px; height: 26px;
+  border: 2.5px solid var(--line);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: prober-spin 0.9s linear infinite;
+}
+.idle .feed-note { font-size: 12px; opacity: 0.75; }
+
+@keyframes prober-spin { to { transform: rotate(360deg); } }
+
+/* 애니메이션을 끈 사용자에게는 회전 대신 옅은 명멸로 대체한다. */
+@media (prefers-reduced-motion: reduce) {
+  .idle .spinner { animation: prober-pulse 1.6s ease-in-out infinite; }
+  @keyframes prober-pulse { 50% { opacity: 0.35; } }
+}
+
 /* ── 학습 종료(ended) ── */
 .ended .ended-title { font-weight: 700; font-size: 16px; color: var(--fg); }
 .ended .summary {
