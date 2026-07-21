@@ -20,6 +20,29 @@ import type { Paragraph } from '../shared/types'
 /** 문단으로 인정할 블록 요소. 리스트·인용·소제목도 독립 문단으로 취급(앵커 정밀도↑). */
 const BLOCK_SELECTOR = 'p, li, blockquote, h1, h2, h3, h4, pre, dd'
 
+// TODO(extractor): <br> 로만 나뉜 본문에서 문단이 0개가 된다. 네이버뉴스가 그렇다.
+//
+// 실측 (2026-07-21, 실제 기사 3건을 Chrome 에서 계측):
+//
+//   네이버뉴스  Readability 성공(1832자) · 루트 <article id="dic_area"> 정확히 탐지
+//               → BLOCK_SELECTOR 매칭 0개 · <br> 32개 · ★최종 문단 0개
+//   연합뉴스    leaf 23 → 노이즈컷 6 / 길이컷 7 → 문단 10개 (정상)
+//   중앙일보    leaf 62 → 노이즈컷 48 / 화이트리스트컷 4 → 문단 9개 (정상)
+//
+// 네이버는 본문이 <p> 없이 텍스트 노드 + <br> 로만 구성돼 leaf 블록이 잡히지 않는다.
+// 한국 언론사에 흔한 구조라 데모 경로에서 치명적이다(extractArticle 이 null 을 반환해
+// /quiz 요청 자체가 나가지 않는다).
+//
+// 참고로 중앙일보의 노이즈컷 48개는 오탐이 아니다 — 내역이 recommend_list_swiper(29),
+// tag_wrap(5), article_header(3), caption(3), article_footer(3), comment_text(2) 로
+// 실제 추천기사·태그·댓글이다. NOISE_PATTERN 은 손댈 필요가 없다.
+//
+// 제안하는 해결: leaf 블록이 없거나 극소수인데 <br> 이 많으면, 루트의 자식 노드를
+// <br> 경계로 묶어 <span data-prober-idx> 로 감싸는 폴백을 넣는다. observer.ts 와
+// anchor.ts 가 관찰·매칭할 **실제 DOM 요소**가 필요하므로 텍스트만 잘라내면 안 되고
+// 래핑이 필요하다. span 은 inline 이라 원본 레이아웃을 깨지 않는다.
+// 검증은 위 3개 사이트로 회귀 확인(네이버 0 → 16 예상, 연합·중앙 유지).
+
 /** 소제목이 아닌 일반 문단의 최소 글자 수(정규화 후). 짧은 캡션·광고 조각 제거. */
 const MIN_PARAGRAPH_LEN = 20
 
