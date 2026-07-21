@@ -16,8 +16,9 @@ import 'widgets/panel_header.dart';
 ///
 /// 개념을 누르면 이 탭을 벗어나지 않고 **인라인으로** 상세를 편다
 /// ([inlineConceptDetailProvider]). 패널이 다른 탭으로 넘어가면 안 되기 때문에
-/// 그래프 선택([selectedNodeIdProvider])과는 별개의 상태로 다룬다. 다만 지도가
-/// 그 개념을 함께 짚어 주는 편이 읽기 좋으므로 선택도 같이 옮긴다.
+/// 그래프 선택([selectedNodeIdProvider])과는 별개의 상태로 다루고, 여기서
+/// 지도 선택을 함께 옮기지도 않는다 — 옮기면 같은 개념의 상세가 지도와 패널
+/// 양쪽에 동시에 떠서 같은 내용이 두 번 나온다.
 class RecommendationPanel extends ConsumerWidget {
   const RecommendationPanel({
     super.key,
@@ -112,10 +113,13 @@ class RecommendationPanel extends ConsumerWidget {
   }
 }
 
-/// 개념 카드를 눌렀을 때 공통 동작 — 지도에서 그 자리를 짚고, 상세를 편다.
+/// 개념 카드를 눌렀을 때 — 이 패널 안에서 상세만 편다.
+///
+/// **[selectedNodeIdProvider]는 건드리지 않는다.** 지도 선택은 지도 위 상세를
+/// 여는 신호라, 여기서 함께 옮기면 같은 개념이 우측 패널과 지도 양쪽에 동시에
+/// 뜬다. 지도 탭과 추천 탭은 각자의 상세를 갖는다.
 void _openConcept(WidgetRef ref, String? nodeId) {
   if (nodeId == null || nodeId.isEmpty) return;
-  ref.read(selectedNodeIdProvider.notifier).state = nodeId;
   ref.read(inlineConceptDetailProvider.notifier).state = nodeId;
 }
 

@@ -77,9 +77,9 @@ void main() {
 
     expect(find.text('추천으로 돌아가기'), findsOneWidget);
     expect(find.text('NDF 거래가 현물 환율을 밀어 올리는 경로를 말한다.'), findsOneWidget);
-    // 지도도 같은 개념을 짚어 준다.
-    expect(container.read(selectedNodeIdProvider), 'c_전가');
     expect(container.read(inlineConceptDetailProvider), 'c_전가');
+    // 지도 선택은 건드리지 않는다 — 옮기면 같은 개념이 지도와 패널에 동시에 뜬다.
+    expect(container.read(selectedNodeIdProvider), isNull);
   });
 
   testWidgets('O/X 문항은 노드에 실려 온 진술문 그대로다', (tester) async {
