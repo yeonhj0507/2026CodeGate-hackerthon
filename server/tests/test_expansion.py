@@ -88,6 +88,31 @@ async def test_carries_the_reason_it_was_picked():
     assert out[0].viaConcepts == ["조랑말금리"]
 
 
+async def test_carries_the_article_the_concept_appeared_in():
+    """카드에서 바로 읽으러 갈 수 있어야 한다 — 낱말만 던지면 다음 행동이 없다."""
+    await seed(("테스트 기사", ["조랑말금리", "조랑말환율"]))
+
+    out = await expand(Graph(nodes=[node("조랑말금리", STATE_UNDERSTOOD)]))
+
+    assert out[0].articleTitle == "테스트 기사"
+    assert out[0].articleUrl.startswith(_MARK)
+
+
+async def test_picks_the_article_that_overlaps_most():
+    """같은 개념이 여러 기사에 있으면 내 개념과 가장 많이 겹치는 기사를 준다."""
+    await seed(
+        ("스치는 기사", ["조랑말금리", "조랑말환율"]),
+        ("맞춤 기사", ["조랑말금리", "조랑말채권", "조랑말환율"]),
+    )
+
+    out = await expand(
+        Graph(nodes=[node("조랑말금리", STATE_UNDERSTOOD), node("조랑말채권", STATE_UNDERSTOOD)])
+    )
+
+    picked = next(e for e in out if e.conceptTag == "조랑말환율")
+    assert picked.articleTitle == "맞춤 기사"
+
+
 async def test_never_recommends_something_already_in_the_graph():
     """확장은 '새 키워드'다. 이미 아는 것도, 틀린 것도, 아직 안 본 것도 제외된다."""
     await seed(("테스트 기사", ["조랑말금리", "조랑말환율", "조랑말물가", "조랑말채권"]))

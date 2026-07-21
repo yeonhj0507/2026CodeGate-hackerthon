@@ -169,10 +169,12 @@ async def recommend_expansion_concepts(
     known = {n.id for n in graph.nodes}
     rows = (await db.execute(select(PartnerArticle))).scalars().all()
 
-    # 새 개념 → (동시 등장 횟수, 근거가 된 내 개념들, 표기)
+    # 새 개념 → (동시 등장 횟수, 근거가 된 내 개념들, 표기, 가장 잘 맞는 기사)
     score: dict[str, int] = {}
     via: dict[str, list[str]] = {}
     label: dict[str, str] = {}
+    # 겹치는 개념이 가장 많은 기사를 그 개념의 출처로 삼는다. 같으면 먼저 본 것을 둔다.
+    best: dict[str, tuple[int, PartnerArticle]] = {}
 
     for row in rows:
         tags = [str(t) for t in (row.concept_tags or [])]
@@ -189,17 +191,24 @@ async def recommend_expansion_concepts(
             for m in mine:
                 if m not in via.setdefault(key, []):
                     via[key].append(m)
+            if key not in best or len(mine) > best[key][0]:
+                best[key] = (len(mine), row)
 
     ordered = sorted(score.items(), key=lambda kv: (-kv[1], label[kv[0]]))
-    return [
-        ExpansionConcept(
-            conceptId=key,
-            conceptTag=label[key],
-            reason="neighbor",
-            viaConcepts=via[key],
+    out: list[ExpansionConcept] = []
+    for key, _ in ordered[:MAX_EXPANSION]:
+        article = best[key][1]
+        out.append(
+            ExpansionConcept(
+                conceptId=key,
+                conceptTag=label[key],
+                reason="neighbor",
+                viaConcepts=via[key],
+                articleTitle=article.title,
+                articleUrl=article.url,
+            )
         )
-        for key, _ in ordered[:MAX_EXPANSION]
-    ]
+    return out
 
 
 async def recommend_articles(

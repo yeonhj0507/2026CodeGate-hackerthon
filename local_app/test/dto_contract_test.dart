@@ -171,6 +171,8 @@ void main() {
           conceptId: 'c_수입물가',
           conceptTag: '수입물가',
           viaConcepts: ['환율'],
+          articleTitle: '환율과 물가',
+          articleUrl: 'https://partner.example.com/fx/1',
         ),
       ],
       retryConcepts: [
@@ -196,6 +198,9 @@ void main() {
     // 확장은 아직 그래프에 없는 새 개념이고, 무엇을 발판으로 왔는지를 싣는다.
     expect(restored.expansionConcepts.single.conceptTag, '수입물가');
     expect(restored.expansionConcepts.single.viaConcepts, ['환율']);
+    expect(restored.expansionConcepts.single.articleUrl,
+        'https://partner.example.com/fx/1');
+    expect(restored.expansionConcepts.single.hasArticle, isTrue);
     // 다시 도전은 그래프 안의 노드다.
     expect(restored.retryConcepts.single.conceptTag, '기준금리');
     expect(restored.retryConcepts.single.reason, RetryReason.retry);
@@ -223,6 +228,7 @@ void main() {
 
     expect(restored.expansionConcepts.single.viaConcepts, isEmpty);
     expect(restored.expansionConcepts.single.label, isNotEmpty);
+    expect(restored.expansionConcepts.single.hasArticle, isFalse);
   });
 
   test('UserContext는 서버가 기대하는 키로 직렬화된다', () {

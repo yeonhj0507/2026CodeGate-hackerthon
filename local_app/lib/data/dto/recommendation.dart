@@ -100,6 +100,8 @@ class ExpansionRecommendation {
     required this.conceptId,
     required this.conceptTag,
     this.viaConcepts = const [],
+    this.articleTitle = '',
+    this.articleUrl = '',
   });
 
   final String conceptId;
@@ -107,6 +109,12 @@ class ExpansionRecommendation {
 
   /// 이 개념을 데려온 근거 — 같은 기사에서 함께 다뤄진 내 개념들.
   final List<String> viaConcepts;
+
+  /// 이 개념이 실제로 쓰인 기사. 카드에서 바로 읽으러 갈 수 있다.
+  final String articleTitle;
+  final String articleUrl;
+
+  bool get hasArticle => articleUrl.isNotEmpty;
 
   /// 카드에 붙일 한 줄 설명. 근거가 있으면 그것으로 말한다.
   String get label => viaConcepts.isEmpty
@@ -120,6 +128,8 @@ class ExpansionRecommendation {
       viaConcepts: (json['viaConcepts'] as List<dynamic>? ?? const [])
           .map((e) => e as String)
           .toList(),
+      articleTitle: json['articleTitle'] as String? ?? '',
+      articleUrl: json['articleUrl'] as String? ?? '',
     );
   }
 
@@ -127,6 +137,8 @@ class ExpansionRecommendation {
         'conceptId': conceptId,
         'conceptTag': conceptTag,
         'viaConcepts': viaConcepts,
+        'articleTitle': articleTitle,
+        'articleUrl': articleUrl,
       };
 }
 

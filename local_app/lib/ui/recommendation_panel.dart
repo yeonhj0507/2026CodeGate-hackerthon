@@ -170,16 +170,28 @@ class _ConceptCard extends ConsumerWidget {
 
 /// 확장 개념 카드 — 아직 내 그래프에 없는 새 키워드.
 ///
-/// **누를 수 없다.** 짚어 줄 노드가 아직 없기 때문이다. 대신 무엇을 발판으로
-/// 데려왔는지를 보여준다.
+/// 카드를 눌러도 짚어 줄 노드가 없다(지도에는 임시 회색 노드로만 떠 있다).
+/// 대신 **그 개념이 실제로 쓰인 기사**로 바로 갈 수 있게 한다.
 class _ExpansionCard extends StatelessWidget {
   const _ExpansionCard({required this.recommendation});
 
   final ExpansionRecommendation recommendation;
 
+  Future<void> _open(BuildContext context) async {
+    final uri = Uri.tryParse(recommendation.articleUrl);
+    final ok = uri != null &&
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!ok && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('링크를 열지 못했습니다: ${recommendation.articleUrl}')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return _CardShell(
+      onTap: recommendation.hasArticle ? () => _open(context) : null,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -204,6 +216,27 @@ class _ExpansionCard extends StatelessWidget {
             style: const TextStyle(
                 fontSize: 12, color: AppColors.textMuted, height: 1.5),
           ),
+          if (recommendation.hasArticle) ...[
+            const SizedBox(height: 8),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(Icons.article_outlined,
+                    size: 13, color: AppColors.pink),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    recommendation.articleTitle,
+                    style: const TextStyle(
+                        fontSize: 11.5, color: AppColors.pink, height: 1.4),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                const Icon(Icons.open_in_new,
+                    size: 12, color: AppColors.textMuted),
+              ],
+            ),
+          ],
         ],
       ),
     );

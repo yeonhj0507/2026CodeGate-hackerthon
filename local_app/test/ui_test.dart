@@ -175,6 +175,8 @@ void main() {
           conceptId: 'c_수입물가',
           conceptTag: '수입물가',
           viaConcepts: ['환율'],
+          articleTitle: '환율 1400원 시대, 수입물가는 어떻게 소비자물가가 되나',
+          articleUrl: 'https://partner.example.com/fx/passthrough',
         ),
       ],
       retryConcepts: [
@@ -206,6 +208,8 @@ void main() {
       // 확장은 그래프에 없는 새 개념이고, 무엇을 발판으로 왔는지를 말한다.
       expect(find.text('수입물가'), findsOneWidget);
       expect(find.textContaining('환율'), findsWidgets);
+      // 낱말만 던지지 않고 그 개념이 쓰인 기사를 함께 건넨다.
+      expect(find.textContaining('수입물가는 어떻게 소비자물가가 되나'), findsOneWidget);
       expect(find.text('실질금리'), findsOneWidget);
       expect(find.text('기준금리'), findsOneWidget);
       // 서버는 신호 종류만 주고 문구는 앱이 만든다.

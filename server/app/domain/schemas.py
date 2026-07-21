@@ -213,6 +213,9 @@ class ExpansionConcept(Strict):
     reason: Literal["neighbor"] = "neighbor"
     # 이 개념을 데려온 근거 — 함께 등장한 내 개념들. 로컬앱이 이유를 설명할 수 있다.
     viaConcepts: list[str] = Field(default_factory=list)
+    # 이 개념이 실제로 쓰인 기사. 카드에서 바로 읽으러 갈 수 있게 함께 보낸다.
+    articleTitle: str = ""
+    articleUrl: str = ""
 
 
 class RetryConcept(Strict):
