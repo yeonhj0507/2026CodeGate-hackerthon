@@ -5,6 +5,7 @@
 
 import { QUIZ_PORT } from '../shared/types'
 import type { ChromeMessage, QuizStreamEvent, StartQuizStream } from '../shared/types'
+import { debugLog } from '../shared/debug'
 import {
   drainRetryQueue,
   getAuthStatus,
@@ -35,10 +36,20 @@ chrome.runtime.onConnect.addListener((port) => {
 
   port.onMessage.addListener((message: StartQuizStream) => {
     if (message.type !== 'START_QUIZ_STREAM') return
+    debugLog('BG: START_QUIZ_STREAM received; bodyLen=', message.body.length)
 
-    streamQuizRequest(message.title, message.body, (quiz) => send({ type: 'QUIZ_ITEM', quiz }))
-      .then((total) => send({ type: 'QUIZ_DONE', total }))
-      .catch((err: Error) => send({ type: 'QUIZ_STREAM_ERROR', error: err.message }))
+    streamQuizRequest(message.title, message.body, (quiz) => {
+      debugLog('BG: forwarding item:', quiz.conceptTag)
+      send({ type: 'QUIZ_ITEM', quiz })
+    })
+      .then((total) => {
+        debugLog('BG: stream done; total=', total)
+        send({ type: 'QUIZ_DONE', total })
+      })
+      .catch((err: Error) => {
+        debugLog('BG: stream error:', err.message)
+        send({ type: 'QUIZ_STREAM_ERROR', error: err.message })
+      })
   })
 })
 

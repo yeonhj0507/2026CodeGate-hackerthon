@@ -27,6 +27,7 @@ import { useSession } from './session'
 import { useQuizFeed } from './quiz-feed'
 import { DETECT_RETRY_DELAYS_MS } from '../shared/constants'
 import { relationsOf } from '../shared/relations'
+import { debugLog } from '../shared/debug'
 import { QUIZ_PORT } from '../shared/types'
 import type {
   ChromeMessage,
@@ -53,17 +54,23 @@ function openQuizStream(
   },
 ): () => void {
   const port = chrome.runtime.connect({ name: QUIZ_PORT })
+  debugLog('stream port connected')
 
   port.onMessage.addListener((event: QuizStreamEvent) => {
+    debugLog('port message:', event.type)
     if (event.type === 'QUIZ_ITEM') handlers.onItem(event.quiz)
     else if (event.type === 'QUIZ_DONE') handlers.onDone(event.total)
     else if (event.type === 'QUIZ_STREAM_ERROR') handlers.onError(event.error)
   })
 
   // 서비스워커가 죽거나 재시작하면 done 없이 끊긴다. 대기 표시가 영원히 남지 않게 한다.
-  port.onDisconnect.addListener(() => handlers.onDone(-1))
+  port.onDisconnect.addListener(() => {
+    debugLog('port disconnected; lastError:', chrome.runtime.lastError?.message)
+    handlers.onDone(-1)
+  })
 
   port.postMessage({ type: 'START_QUIZ_STREAM', title, body } satisfies StartQuizStream)
+  debugLog('START_QUIZ_STREAM sent; bodyLen=', body.length)
   return () => port.disconnect()
 }
 
@@ -156,6 +163,7 @@ async function boot(): Promise<BootResult> {
   observer.onParagraphEnter((idx) => {
     passed.add(idx)
     const qs = byParagraph.get(idx)
+    debugLog('enter idx', idx, '| queued quizzes:', qs?.length ?? 0)
     if (qs && qs.length > 0) queue.enqueue(qs.splice(0)) // 같은 문단 재진입 시 중복 출제 방지
     if (idx === lastIdx) reachedLast = true
     flushUnanchored()
@@ -175,6 +183,12 @@ async function boot(): Promise<BootResult> {
 
       // 앵커는 문항 1건씩 돌려도 결과가 같다(anchorQuizzes 는 순수 함수).
       const anchored = anchorQuizzes([quiz], extract.paragraphs)
+      debugLog(
+        'onItem:', quiz.conceptTag,
+        '| byParagraph keys:', [...anchored.byParagraph.keys()],
+        '| unanchored:', anchored.unanchored.length,
+        '| passed:', [...passed],
+      )
       for (const [idx, qs] of anchored.byParagraph) {
         if (passed.has(idx)) {
           queue.enqueue(qs) // 이미 읽고 지나간 문단 — 기다릴 이유가 없다
