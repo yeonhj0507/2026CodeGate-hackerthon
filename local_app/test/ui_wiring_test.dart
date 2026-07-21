@@ -86,7 +86,7 @@ void main() {
         sourceArticles: [article],
       ),
     ],
-    edges: const [GraphEdge(from: 'c_환헤지', to: 'c_전가', type: EdgeType.prereq)],
+    edges: const [GraphEdge(from: 'c_전가', to: 'c_환헤지', type: EdgeType.prereq)],
   );
 
   // ─── 셸: 세 탭이 존재하고 서로 오간다 ───────────────────────────────────

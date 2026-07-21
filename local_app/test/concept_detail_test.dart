@@ -36,7 +36,7 @@ void main() {
         isPrereq: true,
       ),
     ],
-    edges: [GraphEdge(from: 'c_환헤지', to: 'c_전가', type: EdgeType.prereq)],
+    edges: [GraphEdge(from: 'c_전가', to: 'c_환헤지', type: EdgeType.prereq)],
   );
 
   const recs = Recommendations(
