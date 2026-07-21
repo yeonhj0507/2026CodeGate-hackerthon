@@ -17,12 +17,14 @@
 //   9. onEnd → flush → SEND_SCRAP  [A→C] + 세션 정지
 // =============================================================================
 
-import { extractArticle } from './extractor'
+import { extractArticle, type ExtractResult } from './extractor'
+import { isNonArticleUrl } from './page-gate'
 import { anchorQuizzes } from './anchor'
 import { createParagraphObserver } from './observer'
 import { createSessionQueue } from './session-bind'
-import { mountPanel } from './ui/mount'
+import { mountPanel, mountStartPrompt, unmountStartPrompt } from './ui/mount'
 import { useSession } from './session'
+import { DETECT_RETRY_DELAYS_MS } from '../shared/constants'
 import type { ChromeMessage, Quiz } from '../shared/types'
 
 /** 이보다 문단이 적으면 기사로 보지 않고 중단(비기사 페이지에서 /quiz 남발 방지, §T3.2). */
@@ -38,19 +40,44 @@ async function requestQuiz(title: string, body: string): Promise<Quiz[]> {
   throw new Error('unexpected quiz response')
 }
 
-async function boot(): Promise<void> {
-  // 1) 본문 추출 + 기사 품질 게이트.
-  const extract = extractArticle()
-  if (!extract || extract.paragraphs.length < MIN_ARTICLE_PARAGRAPHS) return
+/** boot 결과. 실패 사유는 제안 카드·팝업이 사용자에게 그대로 보여준다. */
+type BootResult = { ok: true } | { ok: false; reason: string }
 
-  // 2) 퀴즈 트리 요청. 실패/빈 응답이면 패널 없이 조용히 중단(MVP, 페이지 내 에러 UI 없음).
+/**
+ * 이 페이지가 기사로 인식되는지 확인한다. 네트워크는 쓰지 않는다.
+ * @returns 기사면 추출 결과, 아니면 null.
+ */
+function detectArticle(): ExtractResult | null {
+  if (isNonArticleUrl(location.href)) return null
+
+  const extract = extractArticle()
+  if (!extract || extract.paragraphs.length < MIN_ARTICLE_PARAGRAPHS) return null
+
+  return extract
+}
+
+async function boot(): Promise<BootResult> {
+  // 0~1) URL 게이트 + 본문 추출. 시작 시점의 DOM 으로 다시 추출한다
+  //      (제안 카드가 뜬 뒤 본문이 더 로드됐을 수 있다. extractArticle 은 idempotent).
+  if (isNonArticleUrl(location.href)) {
+    return { ok: false, reason: '기사 페이지가 아닙니다. 기사를 연 뒤 다시 눌러주세요.' }
+  }
+
+  const extract = extractArticle()
+  if (!extract || extract.paragraphs.length < MIN_ARTICLE_PARAGRAPHS) {
+    return { ok: false, reason: '이 페이지에서 기사 본문을 찾지 못했습니다.' }
+  }
+
+  // 2) 퀴즈 트리 요청. 실패·빈 응답이면 패널 없이 중단.
   let quizzes: Quiz[]
   try {
     quizzes = await requestQuiz(extract.title, extract.body)
   } catch {
-    return
+    return { ok: false, reason: '질문을 만들지 못했습니다. 잠시 후 다시 시도해주세요.' }
   }
-  if (quizzes.length === 0) return
+  if (quizzes.length === 0) {
+    return { ok: false, reason: '이 기사에서 낼 질문을 찾지 못했습니다.' }
+  }
 
   // 3) 앵커 매칭.
   const anchor = anchorQuizzes(quizzes, extract.paragraphs)
@@ -104,6 +131,60 @@ async function boot(): Promise<void> {
   observer.observe(watched)
 
   // MVP: SPA 재이동/이탈 teardown은 Step 10 여력 시.
+  return { ok: true }
 }
 
-void boot()
+// ─── 활성화 ──────────────────────────────────────────────────────────────────
+// 세션을 자동으로 시작하지는 않는다. 대신 기사로 인식되면 우하단에 제안 카드를
+// 띄우고, 사용자가 "읽기 시작"을 눌렀을 때만 /quiz 를 호출하고 패널을 연다.
+// 팝업의 "이 기사에서 시작" 버튼도 같은 경로를 탄다.
+
+let sessionStarted = false
+let dismissed = false
+
+/** 세션 시작(중복 방지 포함). 성공하면 제안 카드를 내린다. */
+async function startSession(): Promise<BootResult> {
+  if (sessionStarted) return { ok: false, reason: '이미 이 기사에서 실행 중입니다.' }
+
+  const result = await boot()
+  if (result.ok) {
+    sessionStarted = true
+    unmountStartPrompt()
+  }
+  return result
+}
+
+/** 기사로 인식되면 제안 카드를 띄운다. 본문을 늦게 그리는 사이트를 위해 재시도한다. */
+function offerStart(): void {
+  for (const delay of DETECT_RETRY_DELAYS_MS) {
+    window.setTimeout(() => {
+      if (sessionStarted || dismissed) return
+      if (!detectArticle()) return
+
+      mountStartPrompt({
+        onStart: startSession,
+        onDismiss: () => {
+          dismissed = true
+          unmountStartPrompt()
+        },
+      })
+    }, delay)
+  }
+}
+
+offerStart()
+
+// 팝업에서 온 시작 요청(제안 카드를 닫았거나 감지에 실패한 경우의 수동 경로).
+chrome.runtime.onMessage.addListener((message: ChromeMessage, _sender, sendResponse) => {
+  if (message.type !== 'START_SESSION') return undefined
+
+  void startSession().then((result) => {
+    sendResponse(
+      result.ok
+        ? { type: 'SESSION_STARTED' }
+        : { type: 'SESSION_UNAVAILABLE', reason: result.reason },
+    )
+  })
+
+  return true // 비동기 응답
+})

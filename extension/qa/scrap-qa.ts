@@ -7,10 +7,13 @@
 //   수정이 실제 코드에서 의도대로 동작하는지, Bearer 토큰 best-effort 첨부가
 //   맞는지를 확인한다.
 //
-// import.meta.env.VITE_MOCK_QUIZ/VITE_MOCK_SCRAP 체크가 있는 sendQuizRequest/
-// sendScrapRequest 자체는 (플레인 node 실행 환경엔 import.meta.env가 없어 별도
-// 번들 설정 없이는 호출 시 즉시 throw함) 대상에서 제외 — 그 두 줄은 단순 문자열
-// 비교라 리스크가 낮고, 대신 그 아래 실제 로직(drainRetryQueue·postScrap 경유)은
+// import.meta.env는 Vite가 빌드 시 주입하는 값이라 플레인 node에는 없다. api.ts의
+// MOCK_AUTH가 모듈 최상단 상수라 import만 해도 즉시 throw하므로, npm script에서
+// `--transform.define "import.meta.env:{}"`로 빈 객체를 주입해 막는다(= 모든 mock 플래그 off).
+// 프로덕션 번들은 Vite가 실제 값을 주입하므로 영향받지 않는다.
+//
+// sendQuizRequest/sendScrapRequest 자체는 대상에서 제외 — 그 안의 mock 분기는 단순
+// 문자열 비교라 리스크가 낮고, 그 아래 실제 로직(drainRetryQueue·postScrap 경유)은
 // drainRetryQueue를 직접 호출해 전부 커버한다.
 //
 // 실행: npm run qa:scrap (rolldown으로 번들 → node 실행)

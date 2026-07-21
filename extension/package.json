@@ -8,7 +8,8 @@
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
     "qa:anchor": "rolldown qa/anchor-qa.ts -o qa/dist/anchor-qa.mjs --format esm && node qa/dist/anchor-qa.mjs",
-    "qa:scrap": "rolldown qa/scrap-qa.ts -o qa/dist/scrap-qa.mjs --format esm --platform node && node qa/dist/scrap-qa.mjs",
+    "qa:extractor": "rolldown qa/extractor-qa.ts -o qa/dist/extractor-qa.mjs --format esm --platform node --external jsdom && node qa/dist/extractor-qa.mjs",
+    "qa:scrap": "rolldown qa/scrap-qa.ts -o qa/dist/scrap-qa.mjs --format esm --platform node --transform.define \"import.meta.env:{}\" && node qa/dist/scrap-qa.mjs",
     "qa:session": "rolldown qa/session-qa.ts -o qa/dist/session-qa.mjs --format esm --platform node && node qa/dist/session-qa.mjs"
   },
   "dependencies": {
@@ -20,9 +21,11 @@
   "devDependencies": {
     "@crxjs/vite-plugin": "^2.7.1",
     "@types/chrome": "^0.2.2",
+    "@types/jsdom": "^28.0.3",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^6.0.3",
+    "jsdom": "^29.1.1",
     "typescript": "^5.9.3",
     "vite": "^8.1.5"
   }

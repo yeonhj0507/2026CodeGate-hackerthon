@@ -163,3 +163,95 @@ export const PANEL_CSS = /* css */ `
 .next-btn.descend { background: var(--accent); }
 .hint { margin-top: 8px; font-size: 12px; color: var(--muted); text-align: center; }
 `
+
+// ─── 시작 제안 카드 (StartPrompt) ────────────────────────────────────────────
+// 패널과 별도의 shadow root 에 주입된다. 익스텐션 아이콘과 가까운 우측 상단에 뜬다.
+
+export const PROMPT_CSS = /* css */ `
+:host { all: initial; }
+* { box-sizing: border-box; }
+
+.prompt {
+  --fg: #1a1c1e;
+  --muted: #6b7280;
+  --accent: #2563eb;
+  --bad: #dc2626;
+  --bad-weak: #fef2f2;
+
+  position: fixed;
+  right: 20px;
+  top: 20px;
+  z-index: 2147483000;
+
+  width: 260px;
+  padding: 16px 18px 18px;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.16);
+
+  font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo",
+    "Malgun Gothic", "맑은 고딕", sans-serif;
+  color: var(--fg);
+  animation: prompt-in 220ms ease-out;
+}
+
+@keyframes prompt-in {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .prompt { animation: none; }
+}
+
+.prompt-brand { font-size: 13px; font-weight: 700; color: var(--accent); }
+
+.prompt-desc {
+  margin: 6px 0 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--fg);
+}
+
+.prompt-error {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--bad-weak);
+  color: var(--bad);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.prompt-cta {
+  margin-top: 14px;
+  width: 100%;
+  padding: 10px 14px;
+  border: none;
+  border-radius: 10px;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.prompt-cta:disabled { background: #cbd5e1; cursor: not-allowed; }
+
+.prompt-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+.prompt-close:hover { background: #f3f4f6; }
+`

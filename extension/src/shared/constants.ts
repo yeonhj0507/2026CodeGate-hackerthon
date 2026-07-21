@@ -59,3 +59,12 @@ export const PANEL_WIDTH_PX = 340
 
 /** Shadow DOM의 custom element 태그명. */
 export const SHADOW_HOST_TAG = 'prober-panel'
+
+/** 시작 제안 카드의 custom element 태그명(패널과 별도 shadow root). */
+export const PROMPT_HOST_TAG = 'prober-start-prompt'
+
+/**
+ * 기사 감지 재시도 시각(ms). 본문을 늦게 그리는 사이트가 있어 document_idle 직후
+ * 한 번으로는 놓친다. 찾으면 즉시 멈춘다.
+ */
+export const DETECT_RETRY_DELAYS_MS = [0, 1200, 3000] as const

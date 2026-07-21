@@ -128,6 +128,8 @@ function LoginForm({ onSignedIn }: { onSignedIn: () => void }) {
 
 function SignedIn({ email, onSignedOut }: { email: string; onSignedOut: () => void }) {
   const [busy, setBusy] = useState(false)
+  const [starting, setStarting] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
 
   async function signOut() {
     setBusy(true)
@@ -135,15 +137,66 @@ function SignedIn({ email, onSignedOut }: { email: string; onSignedOut: () => vo
     onSignedOut()
   }
 
+  /** 현재 탭의 content script 에 세션 시작을 요청한다(사용자가 고른 기사에서만 열림). */
+  async function startSession() {
+    if (starting) return
+    setStarting(true)
+    setNotice(null)
+
+    let tabUrl = ''
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+      if (tab?.id === undefined) throw new Error('no tab')
+      tabUrl = tab.url ?? ''
+
+      const res = (await chrome.tabs.sendMessage(tab.id, {
+        type: 'START_SESSION',
+      } satisfies ChromeMessage)) as ChromeMessage
+
+      if (res?.type === 'SESSION_STARTED') {
+        window.close() // 패널이 떴으니 팝업은 비켜준다
+        return
+      }
+      setNotice(res?.type === 'SESSION_UNAVAILABLE' ? res.reason : '시작하지 못했습니다.')
+    } catch {
+      // content script 가 응답하지 않는 경우. 두 가지가 섞여 있어 구분해 안내한다.
+      //   (1) 확장을 새로 설치·갱신하기 전부터 열려 있던 탭 → 예전 content script 가
+      //       남아 연결이 끊긴 상태다. 새로고침하면 해결된다.
+      //   (2) chrome:// · 웹스토어 등 content script 가 아예 주입되지 않는 페이지.
+      setNotice(
+        /^https?:/.test(tabUrl)
+          ? '페이지를 새로고침(F5)한 뒤 다시 눌러주세요.'
+          : '이 페이지에서는 사용할 수 없습니다.',
+      )
+    } finally {
+      setStarting(false)
+    }
+  }
+
   return (
     <Shell>
-      <p style={{ fontSize: 13, margin: '0 0 4px' }}>
+      <p style={{ fontSize: 13, margin: '0 0 10px' }}>
         <span style={styles.muted}>로그인됨</span>
         <br />
         <strong>{email || '사용자'}</strong>
       </p>
-      <p style={styles.muted}>기사를 읽으면 프로버가 배경지식을 짚어줍니다.</p>
-      <button type="button" disabled={busy} onClick={signOut} style={styles.linkBtn}>
+
+      <button type="button" disabled={starting} onClick={startSession} style={styles.primaryBtn}>
+        {starting ? '여는 중…' : '이 기사에서 시작'}
+      </button>
+      <p style={{ ...styles.muted, marginTop: 8 }}>
+        기사를 열면 화면 오른쪽 아래에 시작 카드가 자동으로 뜹니다. 카드를 닫았거나
+        뜨지 않을 때 이 버튼으로 시작하세요.
+      </p>
+
+      {notice && <div style={{ ...styles.error, marginTop: 8 }}>{notice}</div>}
+
+      <button
+        type="button"
+        disabled={busy}
+        onClick={signOut}
+        style={{ ...styles.linkBtn, marginTop: 10 }}
+      >
         {busy ? '로그아웃 중…' : '로그아웃'}
       </button>
     </Shell>
