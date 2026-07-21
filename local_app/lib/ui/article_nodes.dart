@@ -34,6 +34,11 @@ String articleNodeId(SourceArticle article) =>
 ///
 /// 개념이 하나뿐인 기사도 그대로 만든다. "이 개념은 이 기사에서 왔다"는 사실
 /// 자체가 지도에서 읽히는 정보이고, 기사가 늘면 자연히 여러 갈래로 자란다.
+///
+/// **기사 선은 level0 개념(선행이 아닌, 기사에서 바로 다룬 개념)에만 잇는다.**
+/// 방사형 지도에서 기사는 중심이고 그 첫 고리(level0)만 직접 감싼다. 선행 개념은
+/// level0 을 통해 바깥 고리로 이어지므로(radial_cluster_layout.dart), 기사에서
+/// 선행 개념으로 바로 긋는 선은 흐름을 흐린다.
 Graph withArticleNodes(Graph graph) {
   if (graph.nodes.isEmpty) return graph;
 
@@ -47,6 +52,8 @@ Graph withArticleNodes(Graph graph) {
 
   for (final node in graph.nodes) {
     if (isArticleNodeId(node.id)) continue;
+    // 선행 개념은 기사가 직접 감싸지 않는다(위 주석 참고).
+    if (node.isPrereq) continue;
 
     for (final article in node.sourceArticles) {
       final key = articleKeyOf(article);
