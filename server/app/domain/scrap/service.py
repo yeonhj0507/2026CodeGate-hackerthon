@@ -16,8 +16,8 @@ from app.domain.schemas import ScrapRequest, ScrapResponse
 async def buffer_scrap(db: AsyncSession, user_id: str, payload: ScrapRequest) -> ScrapResponse:
     row = TempScrap(
         user_id=user_id,
+        article_url=payload.articleUrl,
         article_title=payload.articleTitle,
-        article_body=payload.articleBody,
         results=[r.model_dump() for r in payload.results],
     )
     db.add(row)

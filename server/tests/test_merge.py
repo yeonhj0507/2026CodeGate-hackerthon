@@ -5,6 +5,7 @@ from app.domain.schemas import (
     STATE_UNDERSTOOD,
     Graph,
     GraphNode,
+    SourceArticle,
 )
 from app.domain.thoughtmap.merge import ScrapInput, merge, normalize_concept
 
@@ -33,6 +34,7 @@ def test_normalize_keeps_noun_endings():
 
 def test_new_nodes_and_prereq_edge():
     scrap = ScrapInput(
+        article_url="https://news.example.com/rate",
         article_title="금리 기사",
         results=[
             result("기준금리", None, 0, correct=False),
@@ -57,17 +59,22 @@ def test_new_nodes_and_prereq_edge():
 
 
 def test_later_scrap_recovers_state():
-    old = ScrapInput("기사1", [result("환율", correct=False)])
-    new = ScrapInput("기사2", [result("환율", correct=True)])
+    old = ScrapInput("https://news.example.com/1", "기사1", [result("환율", correct=False)])
+    new = ScrapInput("https://news.example.com/2", "기사2", [result("환율", correct=True)])
     graph = merge(Graph(), [old, new])
 
     assert graph.nodes[0].state == STATE_UNDERSTOOD
     # 크로스기사 병합: 노드 하나에 출처 기사 둘.
-    assert graph.nodes[0].sourceArticles == ["기사1", "기사2"]
+    assert [s.title for s in graph.nodes[0].sourceArticles] == ["기사1", "기사2"]
+    assert [s.url for s in graph.nodes[0].sourceArticles] == [
+        "https://news.example.com/1",
+        "https://news.example.com/2",
+    ]
 
 
 def test_wrong_answer_in_same_session_wins():
     scrap = ScrapInput(
+        "https://news.example.com/fx",
         "기사",
         [result("환율", correct=True), result("환율", correct=False)],
     )
@@ -82,17 +89,20 @@ def test_existing_graph_is_preserved():
                 id=normalize_concept("환율"),
                 concept="환율",
                 state=STATE_UNDERSTOOD,
-                sourceArticles=["예전 기사"],
+                sourceArticles=[SourceArticle(url="https://old.example.com/a", title="예전 기사")],
                 summaryMeta="예전 설명",
             )
         ]
     )
-    graph = merge(existing, [ScrapInput("새 기사", [result("환율", correct=False)])])
+    graph = merge(
+        existing,
+        [ScrapInput("https://news.example.com/new", "새 기사", [result("환율", correct=False)])],
+    )
 
     node = graph.nodes[0]
     assert node.state == STATE_NOT_UNDERSTOOD
     assert node.summaryMeta == "예전 설명"
-    assert node.sourceArticles == ["예전 기사", "새 기사"]
+    assert [s.title for s in node.sourceArticles] == ["예전 기사", "새 기사"]
 
 
 def test_empty_scraps_returns_graph_unchanged():

@@ -18,6 +18,7 @@ from app.domain.schemas import (
     Graph,
     GraphEdge,
     GraphNode,
+    SourceArticle,
 )
 
 # 개념어 꼬리에 붙어 표기만 흔드는 조사. 정규화로 크로스기사 병합률을 올린다.
@@ -47,6 +48,7 @@ def normalize_concept(concept: str) -> str:
 class ScrapInput:
     """DB 행에서 뽑아낸 병합 입력. 오래된 것부터 정렬되어 들어온다."""
 
+    article_url: str
     article_title: str
     results: list[dict] = field(default_factory=list)
 
@@ -82,7 +84,7 @@ def merge(graph: Graph, scraps: list[ScrapInput]) -> Graph:
             correct = bool(raw.get("correct"))
 
             node = _ensure_node(nodes, key, concept)
-            _touch_source(node, scrap.article_title)
+            _touch_source(node, scrap.article_url, scrap.article_title)
 
             # 말단 노드 = 선행 개념어(명세 §5.1). level 0 로 한 번이라도 출제된 개념은
             # 본문 주장이므로 말단이 아니고, 그 판정은 이후 스크랩에도 유지된다.
@@ -98,7 +100,7 @@ def merge(graph: Graph, scraps: list[ScrapInput]) -> Graph:
             if parent:
                 parent_key = normalize_concept(parent)
                 parent_node = _ensure_node(nodes, parent_key, parent)
-                _touch_source(parent_node, scrap.article_title)
+                _touch_source(parent_node, scrap.article_url, scrap.article_title)
                 if parent_key != key:
                     # 엣지 방향은 graph.dart 계약(from=선행, to=후행)을 따른다.
                     # 재질문으로 내려간 개념(conceptTag)이 부모 개념(parentConcept)의 선행이다.
@@ -125,7 +127,21 @@ def _ensure_node(nodes: dict[str, GraphNode], key: str, concept: str) -> GraphNo
     return node
 
 
-def _touch_source(node: GraphNode, article_title: str) -> None:
-    """출처 기사 메타. 2개 이상 쌓인 노드가 곧 크로스기사 노드다."""
-    if article_title and article_title not in node.sourceArticles:
-        node.sourceArticles = [*node.sourceArticles, article_title]
+def _touch_source(node: GraphNode, url: str, title: str) -> None:
+    """출처 기사 메타. 2개 이상 쌓인 노드가 곧 크로스기사 노드다.
+
+    같은 기사를 여러 번 읽어도 하나로 유지되도록 **URL 기준으로 중복을 제거**한다.
+    URL이 비어 있으면 제목으로 폴백한다.
+    """
+    if not url and not title:
+        return
+
+    identity = url or title
+    for existing in node.sourceArticles:
+        if (existing.url or existing.title) == identity:
+            # 같은 기사인데 제목만 나중에 채워진 경우를 보완.
+            if not existing.title and title:
+                existing.title = title
+            return
+
+    node.sourceArticles = [*node.sourceArticles, SourceArticle(url=url, title=title)]

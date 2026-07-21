@@ -22,8 +22,9 @@ def _requires_db(db_available):
 
 def scrap_payload():
     return {
+        # 명세 개정(§3.4): 스크랩에 원문은 없다. URL이 출처 식별자.
+        "articleUrl": "https://news.example.com/econ/withdrawal-test",
         "articleTitle": "탈퇴 테스트 기사",
-        "articleBody": "기준금리에 대한 기사 본문.",
         "results": [
             {"conceptTag": "기준금리", "parentConcept": None, "level": 0, "correct": False},
             {"conceptTag": "통화정책", "parentConcept": "기준금리", "level": 1, "correct": False},

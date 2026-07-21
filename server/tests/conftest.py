@@ -10,8 +10,13 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from app.auth.models import User
 from app.core.config import get_settings
 from app.core.db import SessionLocal, engine
+from app.core.ratelimit import limiter
 from app.domain.models import TempScrap
 from app.main import app
+
+# 테스트는 매번 계정을 새로 만들므로 signup/login 의 10회/분 제한(담당2 §3.5)에 금방 걸린다.
+# 운영 설정은 그대로 두고 테스트 프로세스에서만 끈다.
+limiter.enabled = False
 
 
 def pytest_configure(config):
