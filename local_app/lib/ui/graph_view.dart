@@ -10,26 +10,29 @@ import '../providers/providers.dart';
 import 'app_colors.dart';
 import 'article_nodes.dart';
 import 'node_detail_card.dart';
+import 'radial_cluster_layout.dart';
 
 /// 생각 지도 시각화(명세 §5.1 "뇌 지도").
 ///
-/// 선행→후행 방향을 층으로 드러내야 하므로 Sugiyama(계층형) 레이아웃을 쓴다.
-/// 말단(위쪽) 층에 선행 개념어가 모이고, 아래로 갈수록 그 개념들을 딛고 선
-/// 상위 개념이 온다.
+/// **기사 중심 방사형 레이아웃**을 쓴다(radial_cluster_layout.dart). 기사가
+/// 클러스터의 중심에 오고, level0(기사에서 바로 다룬 개념)이 첫 고리, 그 선행
+/// 개념이 바깥 고리로 감싼다. 기사가 여러 개면 각 기사가 독립된 클러스터가 된다.
+/// 좌표 계산은 [computeRadialLayout] 이 하고, graphview 에는 좌표를 꽂기만 하는
+/// [RadialClusterAlgorithm] 을 넘긴다.
 ///
-/// 줌·팬은 `GraphView.builder`가 내부에 품은 InteractiveViewer가 담당한다.
+/// 줌·팬은 `GraphView.builder`가 내부에 품은 InteractiveViewer가 담당하되,
+/// 변환 행렬은 우리가 주입한 [_transformController]로 직접 제어한다.
 ///
 /// **엣지 없는 노드도 반드시 그린다.** graphview 1.5.1 의 기본 델리게이트는
 /// 그릴 그래프를 *엣지에서만* 모은다([_AllNodesDelegate] 참고). 진단 초기에는
 /// 개념 대부분이 아직 관계를 못 얻어 고립돼 있어서, 그대로 두면 "개념 6"인데
 /// 지도에는 연결된 2개만 뜬다.
 ///
-/// **전체 보기(zoomToFit)가 필수다.** Sugiyama 는 서로 연결되지 않은 노드들을
-/// 같은 층에 가로로 죽 늘어놓는다. 진단 초기에는 개념 대부분이 고립돼 있어
-/// 그래프 폭이 뷰포트를 쉽게 넘고, 기본 변환(1배·좌상단)으로 두면 화면에
-/// **연결된 몇 개만 보이고 나머지는 캔버스 밖에 남는다**(헤더는 "개념 6"인데
-/// 지도에는 2개만 뜨는 현상). `calculateGraphBounds` 는 음수 좌표까지 감안하므로
-/// 맞춰 넣으면 전부 들어온다.
+/// **기본 보기는 '최소 배율 고정' 맞춤이다.** 노드가 많아지면 전체를 다 담으려는
+/// 맞춤은 배율을 극단적으로 낮춰 노드가 보이지 않을 만큼 작아진다. 그래서 기본
+/// 진입 시에는 배율을 읽기 좋은 하한([_minZoomScale]) 아래로는 내리지 않고, 넘치는
+/// 부분은 팬으로 둘러보게 한다([_zoomToFit]). 전체를 한눈에 보고 싶을 때는
+/// 좌하단 '전체 보기' 버튼이 탈출구다.
 class ThoughtMapView extends ConsumerStatefulWidget {
   const ThoughtMapView({super.key, required this.graph});
 
@@ -74,6 +77,10 @@ class _ThoughtMapViewState extends ConsumerState<ThoughtMapView>
     _panController.dispose();
     super.dispose();
   }
+
+  /// 기본 진입 배율의 하한/상한([_zoomToFit] 참고).
+  static const _minZoomScale = 0.55;
+  static const _maxZoomScale = 1.1;
 
   /// 마지막으로 화면에 맞춘 그래프의 모양. 노드·엣지 구성이 바뀔 때만 다시 맞춘다.
   /// 매 빌드마다 맞추면 사용자가 확대해 둔 상태를 빼앗는다.
@@ -132,11 +139,16 @@ class _ThoughtMapViewState extends ConsumerState<ThoughtMapView>
     if (boundsWidth <= 0 || boundsHeight <= 0) return;
 
     final vp = renderBox.size;
-    const paddingFactor = 0.7;
-    final scale = math.min(
+    const paddingFactor = 0.85;
+    final fit = math.min(
       (vp.width / boundsWidth) * paddingFactor,
       (vp.height / boundsHeight) * paddingFactor,
     );
+    // **하한을 둔다.** 방사형 클러스터가 많아지면 전체를 담으려는 배율이
+    // 극단적으로 낮아져 노드가 안 보인다. 읽기 좋은 하한 아래로는 내리지 않고
+    // 넘치는 부분은 팬으로 둘러보게 한다. 상한은 노드 몇 개짜리 작은 지도가
+    // 과하게 확대되지 않게 막는다.
+    final scale = fit.clamp(_minZoomScale, _maxZoomScale);
 
     final scaledWidth = boundsWidth * scale;
     final scaledHeight = boundsHeight * scale;
@@ -175,6 +187,9 @@ class _ThoughtMapViewState extends ConsumerState<ThoughtMapView>
     // 기사 노드는 화면에서만 존재한다. 저장·동기화되는 그래프는 그대로 둔다
     // (article_nodes.dart 주석 — 서버가 기사를 개념으로 착각하면 안 된다).
     final graph = withArticleNodes(widget.graph);
+
+    // 기사 중심 방사형 좌표를 계산한다(순수 함수 — 같은 그래프면 같은 좌표).
+    final layout = computeRadialLayout(graph);
 
     _fitWhenShapeChanged(graph);
 
@@ -217,13 +232,7 @@ class _ThoughtMapViewState extends ConsumerState<ThoughtMapView>
       );
     }
 
-    final config = gv.SugiyamaConfiguration()
-      ..nodeSeparation = 40
-      ..levelSeparation = 70
-      ..orientation = gv.SugiyamaConfiguration.ORIENTATION_TOP_BOTTOM
-      ..addTriangleToEdge = false;
-
-    final algorithm = gv.SugiyamaAlgorithm(config);
+    final algorithm = RadialClusterAlgorithm(layout);
     Widget nodeBuilder(gv.Node gvNode) {
       final id = gvNode.key!.value as String;
       final node = graph.nodeById(id);
