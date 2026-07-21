@@ -71,8 +71,14 @@ class ScrapResult(Strict):
 
 
 class ScrapRequest(Strict):
+    """스크랩 페이로드에는 **기사 원문이 없다**(명세 §3.4).
+
+    원문은 `/quiz` 에서 이미 처리했으므로 재전송하지 않고, 출처 식별은 URL로만 한다.
+    서버에 원문이 영속되는 지점을 없애기 위한 결정이다.
+    """
+
+    articleUrl: str
     articleTitle: str
-    articleBody: str
     results: list[ScrapResult]
 
 
@@ -84,12 +90,19 @@ class ScrapResponse(Strict):
 # ------------------------------------------------- /thoughtmap/update
 
 
+class SourceArticle(Strict):
+    """노드의 출처 기사 메타. URL이 식별자이고 원문은 담지 않는다(명세 §7)."""
+
+    url: str
+    title: str = ""
+
+
 class GraphNode(Strict):
     id: str
     concept: str
     state: str = STATE_UNKNOWN
     isPrereq: bool = False
-    sourceArticles: list[str] = Field(default_factory=list)
+    sourceArticles: list[SourceArticle] = Field(default_factory=list)
     summaryMeta: str | None = None
 
 

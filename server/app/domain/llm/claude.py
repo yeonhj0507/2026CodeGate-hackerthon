@@ -6,9 +6,10 @@ Pydantic 으로 한 번 더 검증한다(스키마 강제만 믿지 않는다).
 
 from anthropic import AsyncAnthropic
 
-from app.core.errors import AppError
 from app.core.config import get_settings
+from app.core.errors import AppError
 from app.domain.llm import prompts
+from app.domain.llm.base import ConceptContext
 
 _MAX_TOKENS = 8000
 
@@ -48,16 +49,28 @@ class ClaudeProvider:
         user = prompts.QUIZ_USER_TEMPLATE.format(title=title, paragraphs=numbered)
         return await self._call_tool(prompts.QUIZ_SYSTEM, user, prompts.QUIZ_TOOL)
 
-    async def summarize_concepts(
-        self, concepts: list[str], article_titles: dict[str, list[str]]
-    ) -> dict[str, str]:
-        if not concepts:
+    async def summarize_concepts(self, items: list[ConceptContext]) -> dict[str, str]:
+        if not items:
             return {}
+
         lines = []
-        for concept in concepts:
-            sources = ", ".join(article_titles.get(concept) or []) or "(출처 기사 정보 없음)"
-            lines.append(f"- {concept} — 등장 기사: {sources}")
-        user = "학습자가 아래 개념들을 이해하지 못했다. 각각 보충설명을 작성하라.\n\n" + "\n".join(lines)
+        for item in items:
+            facts = []
+            if item.parent_concepts:
+                facts.append(f"이 개념을 선행으로 두는 상위 개념: {', '.join(item.parent_concepts)}")
+            if item.prereq_concepts:
+                facts.append(f"이 개념의 선행 개념: {', '.join(item.prereq_concepts)}")
+            if item.is_prereq:
+                facts.append("그래프 말단의 선행 개념")
+            if item.source_titles:
+                facts.append(f"등장 기사 제목: {', '.join(item.source_titles)}")
+            lines.append(f"- {item.concept}\n  " + ("\n  ".join(facts) or "(추가 정보 없음)"))
+
+        user = (
+            "학습자가 아래 개념들을 이해하지 못했다(오답). 각각 보충설명을 작성하라.\n"
+            "주어진 정보는 개념 관계와 기사 제목뿐이며, 기사 원문은 제공되지 않는다.\n\n"
+            + "\n".join(lines)
+        )
 
         raw = await self._call_tool(prompts.SUMMARY_SYSTEM, user, prompts.SUMMARY_TOOL)
         out: dict[str, str] = {}

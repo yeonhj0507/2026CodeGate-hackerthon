@@ -17,6 +17,7 @@ BASE_URL = sys.argv[1] if len(sys.argv) > 1 else "http://localhost:8000"
 USER = f"demo-{uuid.uuid4().hex[:8]}"
 
 ARTICLE_TITLE = "한국은행, 기준금리 연 3.50% 동결"
+ARTICLE_URL = "https://news.example.com/econ/base-rate-hold-2026"
 ARTICLE_BODY = """\
 한국은행 금융통화위원회가 기준금리를 연 3.50%로 동결했다. 여섯 차례 연속 동결이다.
 
@@ -92,8 +93,9 @@ async def main() -> None:
             await client.post(
                 "/scrap",
                 json={
+                    # 원문 재전송 없음(명세 §3.4). 출처 식별은 URL.
+                    "articleUrl": ARTICLE_URL,
                     "articleTitle": ARTICLE_TITLE,
-                    "articleBody": ARTICLE_BODY,
                     "results": results,
                 },
             )

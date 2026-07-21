@@ -6,7 +6,7 @@
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.domain.llm.base import LlmProvider
+from app.domain.llm.base import ConceptContext, LlmProvider
 from app.domain.models import TempScrap
 from app.domain.schemas import (
     STATE_NOT_UNDERSTOOD,
@@ -42,7 +42,14 @@ async def update_thoughtmap(
     consumed_ids = [row.id for row in rows]
 
     # 2. 병합 (순수 로직)
-    scraps = [ScrapInput(article_title=r.article_title, results=r.results or []) for r in rows]
+    scraps = [
+        ScrapInput(
+            article_url=r.article_url,
+            article_title=r.article_title,
+            results=r.results or [],
+        )
+        for r in rows
+    ]
     graph = merge(payload.graph, scraps)
 
     # 3. 개인화 요약 흡수: 미이해 노드에 보충설명을 붙인다(명세 §4.4).
@@ -64,7 +71,11 @@ async def update_thoughtmap(
 
 
 async def _attach_summaries(graph: Graph, llm: LlmProvider) -> None:
-    """미이해 노드 중 아직 설명이 없는 것만 LLM 1회 배치 호출로 채운다."""
+    """미이해 노드 중 아직 설명이 없는 것만 LLM 1회 배치 호출로 채운다.
+
+    서버는 기사 원문을 보관하지 않으므로(명세 §4.4 ⚠️) 재요약의 근거는 원문이 아니라
+    **개념 관계(선행/후행) + 진단 결과 + 기사 제목**이다. 그 근거를 여기서 조립한다.
+    """
     targets = [
         n
         for n in graph.nodes
@@ -73,8 +84,27 @@ async def _attach_summaries(graph: Graph, llm: LlmProvider) -> None:
     if not targets:
         return
 
-    sources = {n.concept: n.sourceArticles for n in targets}
-    summaries = await llm.summarize_concepts([n.concept for n in targets], sources)
+    concept_of = {n.id: n.concept for n in graph.nodes}
+    # 엣지는 from=선행 → to=후행. 노드 기준 양쪽 이웃을 모아 둔다.
+    prereqs: dict[str, list[str]] = {}
+    parents: dict[str, list[str]] = {}
+    for edge in graph.edges:
+        if edge.from_ in concept_of and edge.to in concept_of:
+            prereqs.setdefault(edge.to, []).append(concept_of[edge.from_])
+            parents.setdefault(edge.from_, []).append(concept_of[edge.to])
+
+    items = [
+        ConceptContext(
+            concept=n.concept,
+            is_prereq=n.isPrereq,
+            parent_concepts=parents.get(n.id, []),
+            prereq_concepts=prereqs.get(n.id, []),
+            source_titles=[s.title for s in n.sourceArticles if s.title],
+        )
+        for n in targets
+    ]
+
+    summaries = await llm.summarize_concepts(items)
     for node in targets:
         text = summaries.get(node.concept)
         if text:

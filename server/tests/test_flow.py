@@ -14,10 +14,11 @@ def _requires_db(db_available):
         pytest.skip("Postgres 미기동 (docker compose up -d)")
 
 
-def scrap_payload(title: str, main: str, prereq: str, main_correct: bool):
+def scrap_payload(title: str, main: str, prereq: str, main_correct: bool, url: str | None = None):
+    """스크랩 페이로드에는 원문이 없다(명세 §3.4). URL이 출처 식별자다."""
     return {
+        "articleUrl": url or f"https://news.example.com/{main}",
         "articleTitle": title,
-        "articleBody": f"{main}에 대한 기사 본문.",
         "results": [
             {"conceptTag": main, "parentConcept": None, "level": 0, "correct": main_correct},
             {"conceptTag": prereq, "parentConcept": main, "level": 1, "correct": False},
@@ -45,8 +46,11 @@ async def test_scrap_then_sync_consumes_buffer(client):
     # 미이해 노드에는 개인화 요약이 붙는다(명세 §4.4).
     assert nodes["통화정책"]["summaryMeta"]
 
-    # 크로스기사: 기준금리가 두 기사에서 등장 → 출처 병합.
-    assert len(nodes["기준금리"]["sourceArticles"]) == 2
+    # 크로스기사: 기준금리가 두 기사(다른 URL)에서 등장 → 출처 누적.
+    sources = nodes["기준금리"]["sourceArticles"]
+    assert len(sources) == 2
+    assert {s["title"] for s in sources} == {"금리 기사", "환율 기사"}
+    assert all(s["url"].startswith("https://") for s in sources)
 
     edges = {(e["from"], e["to"]) for e in body["graph"]["edges"]}
     assert edges  # 선행 → 후행 엣지 복원
@@ -55,6 +59,37 @@ async def test_scrap_then_sync_consumes_buffer(client):
     again = await client.post("/thoughtmap/update", json={"graph": body["graph"]})
     assert again.json()["consumedScraps"] == 0
     assert len(again.json()["graph"]["nodes"]) == len(body["graph"]["nodes"])
+
+
+async def test_same_article_read_twice_keeps_one_source(client):
+    """같은 기사를 두 번 읽어도 출처는 URL 기준으로 1건이다."""
+    url = "https://news.example.com/same-article"
+    await client.post("/scrap", json=scrap_payload("금리 기사", "기준금리", "통화정책", False, url))
+    # 제목이 살짝 바뀌어 다시 들어와도 URL이 같으면 같은 기사다.
+    await client.post(
+        "/scrap", json=scrap_payload("금리 기사(수정)", "기준금리", "통화정책", True, url)
+    )
+
+    body = (
+        await client.post("/thoughtmap/update", json={"graph": {"nodes": [], "edges": []}})
+    ).json()
+    nodes = {n["concept"]: n for n in body["graph"]["nodes"]}
+    assert len(nodes["기준금리"]["sourceArticles"]) == 1
+    assert nodes["기준금리"]["sourceArticles"][0]["url"] == url
+
+
+async def test_scrap_rejects_legacy_payload(client):
+    """구형 페이로드(원문 포함, URL 없음)는 422 로 거절한다."""
+    res = await client.post(
+        "/scrap",
+        json={
+            "articleTitle": "옛 계약",
+            "articleBody": "원문 전체...",
+            "results": [{"conceptTag": "환율", "parentConcept": None, "level": 0, "correct": True}],
+        },
+    )
+    assert res.status_code == 422
+    assert res.json()["error"]["code"] == "VALIDATION_ERROR"
 
 
 async def test_recommendations_use_partner_dataset(client):

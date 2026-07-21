@@ -7,6 +7,8 @@ Anthropic 키 없이도 `/quiz` → `/scrap` → `/thoughtmap/update` 전 구간
 import hashlib
 import re
 
+from app.domain.llm.base import ConceptContext
+
 # 개념어 후보로 쓰기 나쁜 흔한 조사·기능어. 목 전용 휴리스틱이다.
 _STOPWORDS = {
     "그리고", "하지만", "그러나", "이번", "지난", "관련", "대한", "위해", "통해",
@@ -100,15 +102,23 @@ class MockProvider:
 
         return {"quiz": quiz}
 
-    async def summarize_concepts(
-        self, concepts: list[str], article_titles: dict[str, list[str]]
-    ) -> dict[str, str]:
+    async def summarize_concepts(self, items: list[ConceptContext]) -> dict[str, str]:
         out: dict[str, str] = {}
-        for concept in concepts:
-            sources = article_titles.get(concept) or []
-            where = f" 「{sources[0]}」 등 {len(sources)}개 기사에서 등장했다." if sources else ""
-            out[concept] = (
-                f"{concept}: 이 개념은 관련 서술의 인과를 잇는 고리다. "
-                f"정의와 전제 조건을 먼저 잡고, 어떤 결과로 이어지는지를 확인하면 이해가 열린다.{where}"
-            )
+        for item in items:
+            parts = [f"{item.concept}: 진단에서 막힌 개념이다."]
+            if item.parent_concepts:
+                parts.append(
+                    f"이 개념을 몰라 「{', '.join(item.parent_concepts)}」의 인과가 끊겼다."
+                )
+            if item.prereq_concepts:
+                parts.append(
+                    f"먼저 「{', '.join(item.prereq_concepts)}」부터 짚으면 여기까지 이어진다."
+                )
+            if item.is_prereq:
+                parts.append("더 얕은 층의 선행 개념이라 여기서부터 다시 쌓는 게 빠르다.")
+            if item.source_titles:
+                parts.append(
+                    f"「{item.source_titles[0]}」 등 {len(item.source_titles)}개 기사에서 만났다."
+                )
+            out[item.concept] = " ".join(parts)
         return out

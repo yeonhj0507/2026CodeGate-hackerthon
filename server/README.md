@@ -69,7 +69,7 @@ python scripts/demo_flow.py   # 로그인 → 흐름 A → 흐름 B 엔드투엔
 | GET | `/auth/me` | 공통 | Bearer | `200 {userId, email, displayName}` |
 | DELETE | `/auth/me` | 공통 | Bearer | `204` |
 | POST | `/quiz` | 익스텐션 | `{articleTitle, articleBody}` | 재질문 트리 포함 퀴즈 전체 정보 (저장 안 함) |
-| POST | `/scrap` | 익스텐션 | `{articleTitle, articleBody, results[]}` | `201 {ok, buffered}` |
+| POST | `/scrap` | 익스텐션 | `{articleUrl, articleTitle, results[]}` — **원문 없음** | `201 {ok, buffered}` |
 | POST | `/thoughtmap/update` | 로컬앱 | `{graph, userContext}` | `{graph, recommendations, consumedScraps}` |
 | GET | `/health` | – | – | `{status:"ok"}` |
 
@@ -82,6 +82,12 @@ python scripts/demo_flow.py   # 로그인 → 흐름 A → 흐름 B 엔드투엔
 
 - `/quiz`·`/scrap` 스키마는 구현계획① §5, 그래프 스키마는 로컬앱 `lib/data/dto/graph.dart`
   와의 계약이다. 필드명(camelCase)을 바꾸면 양쪽이 깨진다.
+- **기사 원문은 `/quiz` 요청에서만 오가고 어디에도 영속되지 않는다**(명세 §3.4·§4.3).
+  `/scrap` 은 `articleUrl`·`articleTitle` 만 보내며, `temp_scraps` 에 원문 컬럼이 없다.
+- 노드 출처 메타는 `sourceArticles: [{url, title}]` 이고 **URL이 식별자**다. 같은 기사를
+  여러 번 읽어도 1건으로 유지되고, 다른 URL에서 같은 개념이 나오면 누적된다(크로스기사 노드).
+- 미이해 개념의 `summaryMeta` 는 원문 재독해가 아니라 **개념 관계(선행/후행)·진단 결과·기사 제목**
+  만으로 생성된다(명세 §4.4 ⚠️). 서버가 원문을 갖지 않기 때문이며, 의도된 범위 축소다.
 - `anchorText` 는 LLM 출력을 쓰지 않고 **서버가 해당 문단 앞 50자로 직접 채운다.**
   익스텐션의 앵커 매칭 리스크(구현계획① §3.3)를 서버가 보증하기 위함이다.
 - 엣지 방향은 `from` = 선행 개념, `to` = 후행 개념. 스크랩의 `parentConcept` 가 후행이고

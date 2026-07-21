@@ -33,8 +33,9 @@ class TempScrap(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     user_id: Mapped[str] = mapped_column(String(64), index=True)
+    # 원문은 받지도 저장하지도 않는다(명세 §4.3). 출처 식별자는 URL.
+    article_url: Mapped[str] = mapped_column(String(1024))
     article_title: Mapped[str] = mapped_column(String(512))
-    article_body: Mapped[str] = mapped_column(Text)
     # [{conceptTag, parentConcept, level, correct}] — 담당1 §3.6 계약 그대로.
     results: Mapped[list] = mapped_column(JSON_TYPE, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
