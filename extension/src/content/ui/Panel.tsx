@@ -6,9 +6,9 @@
 // (background 호출은 content orchestrator가 연결 — T=3 align).
 // =============================================================================
 
-import { useState } from 'react'
 import { useQuizFeed } from '../quiz-feed'
 import { useSession } from '../session'
+import { useSessionEnd } from '../session-end'
 import { ProberLogo } from './ProberLogo'
 import { QuestionView } from './QuestionView'
 import { XpToastLayer } from './XpToastLayer'
@@ -31,16 +31,22 @@ export function Panel({ onEnd }: Props) {
   const solved = results.length
   const correct = results.filter((r) => r.correct).length
 
-  // "학습 종료" 후 표시할 요약. null이면 세션 진행 중, 값이 있으면 종료됨.
-  // onEnd가 flushResults로 버퍼를 비우므로 요약은 호출 "전에" 스냅샷으로 잡는다.
-  const [endedSummary, setEndedSummary] = useState<{ solved: number; correct: number } | null>(null)
-  const ended = endedSummary !== null
+  // 종료(수동 버튼 or 문항 루프 완주 시 컨트롤러의 자동 완료)는 session-end store 가
+  // 관리한다. 두 경로가 같은 완료화면을 띄우도록 Panel 로컬 state 가 아닌 store 를 읽는다.
+  const ended = useSessionEnd((s) => s.ended)
+  const endedSummary = useSessionEnd((s) => s.summary)
 
   const handleEnd = () => {
-    const snapshot = { solved: results.length, correct: results.filter((r) => r.correct).length }
-    if (onEnd) onEnd()
-    else flushResults()
-    setEndedSummary(snapshot) // A의 onEnd 배선이 세션을 정지(dispose/disconnect)하므로 종료 확정 표시
+    if (onEnd) {
+      onEnd() // 컨트롤러가 markEnded + 스크랩 전송 + 세션 정지
+    } else {
+      // onEnd 미주입(mock/테스트 경로): 여기서 직접 완료 표시.
+      useSessionEnd.getState().markEnded({
+        solved: results.length,
+        correct: results.filter((r) => r.correct).length,
+      })
+      flushResults()
+    }
   }
 
   // active 정체성이 바뀌면(새 문항·재질문 진입) QuestionView를 remount해 selected 초기화.
@@ -80,7 +86,7 @@ export function Panel({ onEnd }: Props) {
           <div className="idle ended">
             <span className="emoji">🎉</span>
             <div className="ended-title">학습을 마쳤어요</div>
-            {endedSummary.solved > 0 && (
+            {endedSummary && endedSummary.solved > 0 && (
               <div className="summary">
                 맞힘 {endedSummary.correct} / 푼 문항 {endedSummary.solved}
               </div>
