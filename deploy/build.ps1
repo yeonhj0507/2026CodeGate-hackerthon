@@ -1,0 +1,121 @@
+#requires -Version 7.0
+<#
+.SYNOPSIS
+  Prober 배포 자동화 — 최신 커밋에서 Flutter 데스크톱 앱을 빌드하고
+  단일 Windows 설치 프로그램(.exe)으로 패키징한다.
+
+.DESCRIPTION
+  단계:
+    1) 버전 스탬프 (pubspec version + git short hash)
+    2) Flutter Windows 릴리스 빌드 (서버 URL을 dart-define 로 주입)
+    3) Inno Setup 컴파일 → deploy/dist/ProberSetup-<ver>.exe
+
+  ⚠️ Chrome 익스텐션은 이 설치기에 포함하지 않는다(별도 배포). 설치기는 데스크톱
+  앱만 담는다.
+
+  서버(FastAPI)와 DB(PostgreSQL)는 Render 에 배포한다(server/DEPLOY.md 참고).
+  클라이언트가 바라볼 서버 주소는 -ApiBaseUrl 로 주입한다. 기본값은 개발용 localhost.
+
+  PowerShell 7+ 가 필요하다. `pwsh` 로 실행할 것.
+
+.EXAMPLE
+  pwsh ./build.ps1
+  pwsh ./build.ps1 -ApiBaseUrl https://prober-api.onrender.com
+  pwsh ./build.ps1 -SkipFlutter   # 설치기만 재생성
+#>
+[CmdletBinding()]
+param(
+    # 클라이언트(앱)가 바라볼 서버 베이스 URL. 원격 배포(Render) 시 교체.
+    [string]$ApiBaseUrl = 'http://localhost:8000',
+
+    # Flutter 빌드에서 Mock API 대신 실서버를 쓰게 한다(config.dart USE_MOCK).
+    [ValidateSet('true', 'false')]
+    [string]$UseMock = 'false',
+
+    # 이미 빌드된 산출물을 재사용하고 싶을 때.
+    [switch]$SkipFlutter
+)
+
+$ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
+
+# ── 경로 ─────────────────────────────────────────────────────────────────────
+$Deploy     = $PSScriptRoot
+$RepoRoot   = Split-Path $Deploy -Parent
+$AppDir     = Join-Path $RepoRoot 'local_app'
+$DistDir    = Join-Path $Deploy 'dist'
+$IssPath    = Join-Path $Deploy 'installer/prober.iss'
+$ReleaseDir = Join-Path $AppDir 'build/windows/x64/runner/Release'
+
+New-Item -ItemType Directory -Force -Path $DistDir | Out-Null
+
+function Write-Step($msg) { Write-Host "`n=== $msg ===" -ForegroundColor Cyan }
+function Fail($msg) { Write-Error $msg; exit 1 }
+
+function Resolve-Tool([string]$name, [string[]]$candidates, [string]$hint) {
+    foreach ($c in $candidates) {
+        if (Test-Path $c) { return $c }
+        $cmd = Get-Command $c -ErrorAction SilentlyContinue
+        if ($cmd) { return $cmd.Source }
+    }
+    Fail "$name 를 찾지 못했습니다. $hint"
+}
+
+# ── 도구 탐지 ────────────────────────────────────────────────────────────────
+Write-Step '도구 탐지'
+$flutter = Resolve-Tool 'Flutter' @('flutter') 'https://docs.flutter.dev 에서 설치 후 PATH 에 추가하세요.'
+$iscc    = Resolve-Tool 'Inno Setup (ISCC)' @(
+    "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+    "$env:ProgramFiles\Inno Setup 6\ISCC.exe",
+    # winget(JRSoftware.InnoSetup)은 사용자 단위로 여기에 설치한다.
+    "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe",
+    'ISCC'
+) 'https://jrsoftware.org/isdl.php 에서 Inno Setup 6 을 설치하세요.'
+Write-Host "flutter : $flutter"
+Write-Host "iscc    : $iscc"
+
+# ── 1) 버전 스탬프 ───────────────────────────────────────────────────────────
+Write-Step '버전 스탬프'
+$pubspec = Get-Content (Join-Path $AppDir 'pubspec.yaml') -Raw
+if ($pubspec -notmatch '(?m)^\s*version:\s*([0-9]+\.[0-9]+\.[0-9]+)') {
+    Fail 'pubspec.yaml 에서 version 을 읽지 못했습니다.'
+}
+$AppVersion = $Matches[1]
+$GitHash = (& git -C $RepoRoot rev-parse --short HEAD 2>$null)
+if (-not $GitHash) { $GitHash = 'nogit' }
+$FullVersion = "$AppVersion+$GitHash"
+Write-Host "버전: $FullVersion  (서버: $ApiBaseUrl, USE_MOCK=$UseMock)"
+
+# ── 2) Flutter 빌드 ─────────────────────────────────────────────────────────
+if ($SkipFlutter) {
+    Write-Step 'Flutter 빌드 건너뜀'
+    if (-not (Test-Path (Join-Path $ReleaseDir 'prober_local.exe'))) {
+        Fail "이전 빌드 산출물이 없습니다: $ReleaseDir\prober_local.exe"
+    }
+} else {
+    Write-Step 'Flutter Windows 릴리스 빌드'
+    Push-Location $AppDir
+    try {
+        & $flutter build windows --release `
+            --dart-define=USE_MOCK=$UseMock `
+            --dart-define=API_BASE_URL=$ApiBaseUrl
+        if ($LASTEXITCODE -ne 0) { Fail 'flutter build 실패' }
+    } finally { Pop-Location }
+}
+if (-not (Test-Path (Join-Path $ReleaseDir 'prober_local.exe'))) {
+    Fail "빌드된 exe 를 찾지 못했습니다: $ReleaseDir\prober_local.exe"
+}
+
+# ── 3) Inno Setup 컴파일 ─────────────────────────────────────────────────────
+Write-Step 'Inno Setup 컴파일'
+& $iscc `
+    "/DAppVersion=$FullVersion" `
+    "/DReleaseDir=$ReleaseDir" `
+    "/DOutputDir=$DistDir" `
+    "$IssPath"
+if ($LASTEXITCODE -ne 0) { Fail 'ISCC 컴파일 실패' }
+
+$setup = Get-ChildItem $DistDir -Filter 'ProberSetup-*.exe' | Sort-Object LastWriteTime | Select-Object -Last 1
+Write-Step '완료'
+Write-Host "설치 프로그램: $($setup.FullName)" -ForegroundColor Green
+Write-Host "서버 URL     : $ApiBaseUrl"

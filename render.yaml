@@ -1,0 +1,49 @@
+# Render Blueprint — Prober 백엔드 (FastAPI) + PostgreSQL(pgvector)
+# 웹 서비스와 DB 를 한 Blueprint 에서 함께 프로비저닝하고 DATABASE_URL 을 자동 연결한다.
+#
+# 배포: Render 대시보드 → New → Blueprint → 이 레포 연결 → 이 파일을 자동 인식.
+# 상세 절차·환경변수 설명은 server/DEPLOY.md 참고.
+
+databases:
+  - name: prober-db
+    plan: free                 # 무료는 생성 ~30일 뒤 만료. 지속하려면 유료로 승급.
+    postgresMajorVersion: "16" # pgvector 확장 지원. 마이그레이션이 CREATE EXTENSION 수행.
+
+services:
+  - type: web
+    name: prober-api
+    runtime: python
+    rootDir: server          # 빌드/실행 기준 디렉터리 (requirements.txt·app/ 위치)
+    plan: free               # 데모용. 상시가동이 필요하면 starter($7/월)로 올린다.
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    autoDeploy: true         # main 에 push 하면 자동 재배포
+    envVars:
+      # 같은 Blueprint 의 prober-db 내부 연결 문자열을 자동 주입한다(내부망, SSL 불필요).
+      # Render 는 postgresql:// 로 주지만 config.py 가 postgresql+asyncpg:// 로 정규화한다.
+      - key: DATABASE_URL
+        fromDatabase:
+          name: prober-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true  # Render 가 안전한 랜덤 값 자동 생성
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: "1440"
+      - key: APP_NAME
+        value: Prober
+      # LLM: 키 없으면 mock 으로 전 파이프라인 동작. 실연동 시 claude 로 바꾸고 키 입력.
+      - key: LLM_PROVIDER
+        value: mock
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: ANTHROPIC_MODEL
+        value: claude-opus-4-8
+      # 기사 검색(선택). 없으면 제휴 데이터셋만으로 추천.
+      - key: NAVER_CLIENT_ID
+        sync: false
+      - key: NAVER_CLIENT_SECRET
+        sync: false
+      # requirements 가 3.11+ 를 전제(코드 생성물이 cpython-312). 3.12 로 고정.
+      - key: PYTHON_VERSION
+        value: "3.12"

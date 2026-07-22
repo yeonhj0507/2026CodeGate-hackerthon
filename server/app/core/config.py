@@ -1,6 +1,8 @@
 """애플리케이션 설정. `.env` 에서 로드 (pydantic-settings)."""
 from functools import lru_cache
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -9,6 +11,30 @@ class Settings(BaseSettings):
 
     # --- Database ---
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/prober"
+
+    @field_validator("database_url")
+    @classmethod
+    def _normalize_db_url(cls, v: str) -> str:
+        """매니지드 Postgres(Render 등)가 주는 URL 을 asyncpg 용으로 정규화한다.
+
+        - `postgres://` · `postgresql://` (드라이버 미지정) → `postgresql+asyncpg://`.
+          Render/Heroku 는 이 형태로 DATABASE_URL 을 준다.
+        - libpq 전용 쿼리(`sslmode`·`channel_binding`) 제거 — asyncpg 는 이 파라미터를
+          모르며, SSL 은 db.py 의 async_engine_options 가 connect_args 로 처리한다
+          (Supabase 호스트 자동 감지 또는 DB_REQUIRE_SSL=1).
+        """
+        if v.startswith("postgres://"):
+            v = "postgresql://" + v[len("postgres://"):]
+        if v.startswith("postgresql://"):
+            v = "postgresql+asyncpg://" + v[len("postgresql://"):]
+        if v.startswith("postgresql+asyncpg://"):
+            parts = urlsplit(v)
+            if parts.query:
+                kept = [(k, val) for k, val in parse_qsl(parts.query)
+                        if k not in ("sslmode", "channel_binding")]
+                v = urlunsplit((parts.scheme, parts.netloc, parts.path,
+                                urlencode(kept), parts.fragment))
+        return v
 
     # --- JWT ---
     jwt_secret: str = "dev-insecure-secret-change-me"
