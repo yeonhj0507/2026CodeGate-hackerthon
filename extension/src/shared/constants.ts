@@ -1,11 +1,13 @@
 // =============================================================================
 // shared/constants.ts — 전역 상수
-// TODO: API_BASE_URL은 배포 환경에 맞춰 교체
+// API_BASE_URL은 빌드 시 VITE_API_BASE_URL로 주입한다(배포: deploy/build.ps1).
+// env가 없으면 개발 기본값(localhost:8000)으로 폴백한다.
 // =============================================================================
 
 // ─── API ─────────────────────────────────────────────────────────────────────
 
-export const API_BASE_URL = 'http://localhost:8000'
+export const API_BASE_URL: string =
+  import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'
 
 export const ENDPOINTS = {
   QUIZ:    `${API_BASE_URL}/quiz`,

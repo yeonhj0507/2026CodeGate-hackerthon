@@ -24,3 +24,8 @@ __pycache__/
 
 # 로컬 작업 문서 (github 업로드 제외)
 docs/
+
+# 배포 산출물 (deploy/build.ps1) — deploy/dist/ 는 위 dist/ 규칙으로 이미 무시됨.
+
+# Render
+.render/
