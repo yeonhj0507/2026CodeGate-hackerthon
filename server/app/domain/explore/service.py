@@ -50,11 +50,18 @@ async def explore(
     # 직렬로 두면 탐색 탭이 눈에 띄게 느려진다. 함께 돌려 둘 중 긴 쪽으로 만든다.
     #
     # db 세션을 건드리는 건 recommend_articles 뿐이다(AsyncSession 은 동시 사용 불가).
+    # 웹 검색 실패를 담아 둘 자리. recommend_articles 가 실패 시 True 를 넣는다.
+    search_failure: list[bool] = []
     explanation_task, articles_task = await asyncio.gather(
         llm.explain_concepts(concepts),
         # 추천 탭과 같은 랭킹 로직 재사용 — 제휴 우선, 부족분만 검색.
         recommend.recommend_articles(
-            db, concepts, UserContext(), search, limit=EXPLORE_ARTICLES
+            db,
+            concepts,
+            UserContext(),
+            search,
+            limit=EXPLORE_ARTICLES,
+            failure_out=search_failure,
         ),
         return_exceptions=True,
     )
@@ -69,9 +76,17 @@ async def explore(
     if isinstance(articles_task, BaseException):
         logger.warning("탐색 기사 추천 실패(설명만 반환한다): %s", articles_task)
         articles = []
+        search_failed = True
     else:
         articles = articles_task
+        # 웹 뉴스 검색이 실패했는지(제휴 기사는 그대로 실린다). 화면이 기사 영역에
+        # "뉴스 검색 실패"를 알리는 근거다.
+        search_failed = bool(search_failure)
 
-    result = ExploreResponse(explanation=explanation, articles=articles)
-    _cache[key] = (time.time(), result)
+    result = ExploreResponse(
+        explanation=explanation, articles=articles, searchFailed=search_failed
+    )
+    # 실패는 캐시하지 않는다 — 다음 시도에 다시 검색해 볼 수 있게 둔다.
+    if not search_failed:
+        _cache[key] = (time.time(), result)
     return result

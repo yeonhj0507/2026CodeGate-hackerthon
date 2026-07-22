@@ -47,7 +47,7 @@ async def test_explanation_and_articles_run_concurrently(monkeypatch):
     articles_started = asyncio.Event()
     overlapped: list[bool] = []
 
-    async def fake_articles(db, concepts, context, search, limit):
+    async def fake_articles(db, concepts, context, search, limit, failure_out=None):
         articles_started.set()
         await llm_started.wait()  # 설명 쪽도 이미 돌고 있어야 한다
         return []
@@ -68,7 +68,7 @@ async def test_explanation_and_articles_run_concurrently(monkeypatch):
 async def test_article_failure_still_returns_explanation(monkeypatch):
     """기사는 부가 기능이다. 실패해도 설명까지 버리지 않는다."""
 
-    async def boom(db, concepts, context, search, limit):
+    async def boom(db, concepts, context, search, limit, failure_out=None):
         raise RuntimeError("검색 서버 down")
 
     class _Ok:
@@ -91,7 +91,7 @@ async def test_article_failure_still_returns_explanation(monkeypatch):
 async def test_explanation_failure_propagates(monkeypatch):
     """설명은 이 탭의 본체다. 직렬이던 시절과 같이 그대로 올린다."""
 
-    async def no_articles(db, concepts, context, search, limit):
+    async def no_articles(db, concepts, context, search, limit, failure_out=None):
         return []
 
     class _Broken:
@@ -106,6 +106,35 @@ async def test_explanation_failure_propagates(monkeypatch):
             payload=ExploreRequest(conceptIds=["a"], conceptTags=["기준금리"]),
             llm=_Broken(),
         )
+
+
+@pytest.mark.asyncio
+async def test_search_failure_is_surfaced_but_keeps_articles(monkeypatch):
+    """웹 뉴스 검색이 실패하면 searchFailed=True 로 알리되, 제휴 기사·설명은
+    그대로 실린다(현행 유지 + 기사 영역 실패 표시)."""
+    from app.domain.schemas import ArticleRecommendation
+
+    async def partial(db, concepts, context, search, limit, failure_out=None):
+        # 검색이 실패했음을 알리고(제휴만으로 마감), 제휴 기사는 남긴다.
+        if failure_out is not None:
+            failure_out.append(True)
+        return [ArticleRecommendation(title="제휴", url="https://p", source="partner")]
+
+    class _Ok:
+        async def explain_concepts(self, concepts):
+            return "설명"
+
+    monkeypatch.setattr(service.recommend, "recommend_articles", partial)
+
+    result = await service.explore(
+        db=None,
+        payload=ExploreRequest(conceptIds=["a"], conceptTags=["기준금리"]),
+        llm=_Ok(),
+    )
+
+    assert result.searchFailed is True
+    assert result.explanation == "설명"
+    assert [a.title for a in result.articles] == ["제휴"]
 
 
 @pytest.mark.asyncio

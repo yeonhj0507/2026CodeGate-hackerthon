@@ -27,7 +27,7 @@ from app.domain.schemas import (
     Recommendations,
     UserContext,
 )
-from app.domain.search.base import SearchProvider, get_search_provider
+from app.domain.search.base import SearchError, SearchProvider, get_search_provider
 from app.domain.thoughtmap.merge import normalize_concept
 
 MAX_CONCEPTS = 8
@@ -221,11 +221,16 @@ async def recommend_articles(
     context: UserContext,
     search: SearchProvider | None = None,
     limit: int = MAX_ARTICLES,
+    failure_out: list[bool] | None = None,
 ) -> list[ArticleRecommendation]:
     """읽을 만한 기사 — 결핍 보완 + 확장 개념 모두를 근거로 랭킹한다(명세 §4.4).
 
     제휴 데이터셋을 먼저 채우고, 모자란 자리만 웹 검색으로 보충한다.
     탐색 탭은 같은 로직을 `limit=2` 로 재사용한다.
+
+    웹 검색이 **실패**해도 제휴 기사는 그대로 돌려준다(동기화가 검색 때문에 막히면
+    안 된다). 다만 [failure_out] 리스트를 주면 검색 실패 시 `True` 를 담아 둔다 —
+    융합검색이 "뉴스 검색 실패"를 사용자에게 알리는 데 쓴다.
     """
     rows = (await db.execute(select(PartnerArticle))).scalars().all()
     if not rows:
@@ -271,7 +276,14 @@ async def recommend_articles(
         return partner
 
     taken = {a.url for a in partner}
-    found = await (search or get_search_provider()).search_articles(concepts, shortfall)
+    try:
+        found = await (search or get_search_provider()).search_articles(concepts, shortfall)
+    except SearchError:
+        # 검색 호출 실패 — 제휴 기사만으로 마감한다(동기화는 막지 않는다). 실패
+        # 사실은 요청한 쪽에만 알린다(융합검색은 표시하고, 동기화는 무시한다).
+        if failure_out is not None:
+            failure_out.append(True)
+        return partner[:limit]
     for item in found:
         if item.url in taken:
             continue

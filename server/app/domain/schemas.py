@@ -308,3 +308,6 @@ class ExploreRequest(Strict):
 class ExploreResponse(Strict):
     explanation: str
     articles: list[ArticleRecommendation] = Field(default_factory=list)
+    # 웹 뉴스 검색이 실패했는지. 제휴 기사는 그대로 실리되, 이 값이 True 면
+    # 융합검색 화면이 기사 영역에 "뉴스 검색 실패"를 알린다.
+    searchFailed: bool = False
