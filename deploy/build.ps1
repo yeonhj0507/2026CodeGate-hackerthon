@@ -178,20 +178,19 @@ $setup = Get-ChildItem $DistDir -Filter 'ProberSetup-*.exe' | Sort-Object LastWr
 if ($PublishRelease) {
     Write-Step "GitHub Releases 업로드 ($ReleaseTag)"
     $gh = Resolve-Tool 'GitHub CLI (gh)' @('gh') 'https://cli.github.com 에서 설치 후 gh auth login 하세요.'
-    # /download/win 이 항상 같은 URL 을 가리키도록 애셋 파일명을 ProberSetup.exe 로 고정.
-    # (gh 의 file#label 문법은 "표시 라벨"만 바꾸고 다운로드에 쓰이는 애셋 이름=파일명은
-    #  그대로다. 따라서 실제 파일을 ProberSetup.exe 로 복사해서 올린다.)
-    $stableExe = Join-Path $DistDir 'ProberSetup.exe'
-    Copy-Item $setup.FullName $stableExe -Force
-    $notes = "Prober 설치기 ($FullVersion). 서버: $ApiBaseUrl"
+    # 애셋을 버전명 그대로(ProberSetup-<버전>.exe) 올린다 → 빌드마다 파일이 구별된다.
+    # 백엔드(/download/win)는 이 릴리스에서 "가장 최신 .exe"를 런타임에 찾아 리다이렉트하므로
+    # 파일명이 매번 달라도 URL 하드코딩 없이 자동 반영된다.
+    $notes = "Prober 설치기 $FullVersion. 서버: $ApiBaseUrl"
     & $gh release view $ReleaseTag *> $null
     if ($LASTEXITCODE -eq 0) {
-        & $gh release upload $ReleaseTag $stableExe --clobber
+        # 같은 파일명(동일 커밋 재빌드)만 교체하고, 새 버전은 새 애셋으로 추가된다.
+        & $gh release upload $ReleaseTag $setup.FullName --clobber
     } else {
-        & $gh release create $ReleaseTag $stableExe --title "Prober 설치기 (latest)" --notes $notes
+        & $gh release create $ReleaseTag $setup.FullName --title "Prober 설치기" --notes $notes
     }
     if ($LASTEXITCODE -ne 0) { Fail 'gh release 업로드 실패' }
-    Write-Host "업로드 완료 → 다운로드 페이지의 /download/win 이 이 애셋을 가리킵니다."
+    Write-Host "업로드 완료: $($setup.Name) → /download/win 이 자동으로 최신본을 가리킵니다."
 }
 
 Write-Step '완료'
