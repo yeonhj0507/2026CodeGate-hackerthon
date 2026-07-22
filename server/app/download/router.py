@@ -1,12 +1,16 @@
 """설치 파일 다운로드 페이지.
 
-`GET /download`      → 데스크톱 앱 설치 랜딩 페이지(HTML) 렌더.
+`GET /download`      → 데스크톱 앱 설치 랜딩 페이지(HTML) 렌더(최신 버전 표시).
 `GET /download/win`  → 실제 설치 파일(.exe)로 302 리다이렉트.
 
 실제 바이너리는 서버가 아니라 GitHub Releases 에 있다(Render 리눅스 컨테이너는 Windows
-exe 를 만들 수도, 무료 플랜에서 영구 저장할 수도 없다). 리다이렉트 대상은
-`settings.download_url` 로 주입 — 나중에 스토리지(R2 등)로 옮겨도 코드 변경이 없다.
+exe 를 만들 수도, 무료 플랜에서 영구 저장할 수도 없다). 파일명에 버전이 들어가므로
+(예: ProberSetup-0.1.0+abc123.exe), 백엔드가 하드코딩 대신 **런타임에 릴리스에서 가장
+최신 .exe 애셋을 찾아** 리다이렉트한다 → 새 버전을 올리면 자동 반영된다.
 """
+import time
+
+import httpx
 from fastapi import APIRouter
 from fastapi.responses import HTMLResponse, RedirectResponse
 
@@ -14,12 +18,66 @@ from app.core.config import settings
 
 router = APIRouter(tags=["download"])
 
+# GitHub API 호출을 아끼기 위한 프로세스 내 짧은 캐시(비인증 API 는 IP당 60회/시 제한).
+_CACHE_TTL = 300.0
+_cache: dict = {"ts": 0.0, "data": None}
+
+
+async def _resolve_installer() -> dict | None:
+    """release_tag 릴리스에서 가장 최신 .exe 애셋을 찾는다.
+
+    반환: {"name", "url", "version"} 또는 None(실패).
+    settings.download_url 이 설정돼 있으면 그 값으로 즉시 오버라이드한다.
+    """
+    if settings.download_url:
+        return {"name": None, "url": settings.download_url, "version": None}
+
+    now = time.monotonic()
+    if _cache["data"] is not None and (now - _cache["ts"]) < _CACHE_TTL:
+        return _cache["data"]
+
+    api = (f"https://api.github.com/repos/{settings.github_repo}"
+           f"/releases/tags/{settings.release_tag}")
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            resp = await client.get(api, headers={"Accept": "application/vnd.github+json"})
+            resp.raise_for_status()
+            release = resp.json()
+    except Exception:
+        # 조회 실패 시 캐시된 이전 값이라도 있으면 그것을 쓴다(없으면 None).
+        return _cache["data"]
+
+    exes = [a for a in release.get("assets", []) if a.get("name", "").lower().endswith(".exe")]
+    # 버전이 붙은 애셋(ProberSetup-<버전>.exe)을 우선하고, 그중 가장 최근 업로드를 고른다.
+    # (옛 고정명 ProberSetup.exe 가 릴리스에 남아 있어도 버전본이 이긴다.)
+    def _rank(a: dict) -> tuple:
+        name = a.get("name", "").lower()
+        versioned = name.startswith("probersetup-")
+        return (versioned, a.get("created_at", ""))
+    exes.sort(key=_rank, reverse=True)
+    if not exes:
+        return None
+    top = exes[0]
+    name = top["name"]
+    version = name
+    if name.lower().startswith("probersetup-") and name.lower().endswith(".exe"):
+        version = name[len("ProberSetup-"):-len(".exe")]  # 파일명에서 버전만 추출
+    data = {"name": name, "url": top["browser_download_url"], "version": version}
+    _cache["ts"] = now
+    _cache["data"] = data
+    return data
+
 
 @router.get("/download/win")
 async def download_windows() -> RedirectResponse:
-    """실제 설치 파일 위치로 리다이렉트(브라우저가 다운로드를 시작한다)."""
-    # 302: 대상(릴리스 최신본)이 바뀔 수 있으므로 캐시 고정을 피한다.
-    return RedirectResponse(url=settings.download_url, status_code=302)
+    """최신 설치 파일로 리다이렉트(브라우저가 다운로드를 시작한다)."""
+    info = await _resolve_installer()
+    if info and info.get("url"):
+        # 302: 최신본이 바뀌므로 캐시 고정을 피한다.
+        return RedirectResponse(url=info["url"], status_code=302)
+    # 폴백: 릴리스 페이지로 보낸다(애셋 미존재/조회 실패 시).
+    fallback = f"https://github.com/{settings.github_repo}/releases/tag/{settings.release_tag}"
+    return RedirectResponse(url=fallback, status_code=302)
 
 
 _PAGE = """<!doctype html>
@@ -77,7 +135,7 @@ _PAGE = """<!doctype html>
 
     <a class="btn" href="/download/win" download>⬇ Windows용 다운로드</a>
 
-    <p class="meta">Windows 10 / 11 (64-bit) · 설치 파일(.exe)</p>
+    <p class="meta">__VERSION__Windows 10 / 11 (64-bit) · 설치 파일(.exe)</p>
 
     <p id="other">현재 Windows 전용입니다. Windows PC 에서 이 페이지를 다시 열어 주세요.</p>
 
@@ -99,5 +157,9 @@ _PAGE = """<!doctype html>
 
 @router.get("/download", response_class=HTMLResponse)
 async def download_page() -> HTMLResponse:
-    """설치 랜딩 페이지."""
-    return HTMLResponse(content=_PAGE)
+    """설치 랜딩 페이지(최신 버전 표시)."""
+    info = await _resolve_installer()
+    version_label = ""
+    if info and info.get("version"):
+        version_label = f"버전 {info['version']} · "
+    return HTMLResponse(content=_PAGE.replace("__VERSION__", version_label))
