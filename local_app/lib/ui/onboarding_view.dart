@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../providers/providers.dart';
 import 'app_colors.dart';
 import 'widgets/logo_mark.dart';
 
@@ -8,11 +10,16 @@ import 'widgets/logo_mark.dart';
 ///
 /// 그래프가 비면 우측 도킹 패널도 보여줄 추천/상세/기사 데이터가 없으므로,
 /// Figma 시안대로 홈 레이아웃 전체를 이 화면으로 대체한다.
-class OnboardingView extends StatelessWidget {
+///
+/// 재설치 등으로 로컬만 비고 서버엔 이력이 있는 경우가 있어, 여기서도 바로
+/// "내 이력 가져오기"(동기화)를 할 수 있게 둔다. 동기화가 노드를 채우면
+/// graphProvider 스트림이 흘러 홈이 저절로 지도 화면으로 바뀐다.
+class OnboardingView extends ConsumerWidget {
   const OnboardingView({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final sync = ref.watch(syncControllerProvider);
     return Center(
       child: SingleChildScrollView(
         padding: const EdgeInsets.symmetric(vertical: 32),
@@ -66,10 +73,11 @@ class OnboardingView extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 24),
-            FilledButton(
-              onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('크롬 익스텐션은 별도로 배포돼요.')),
-              ),
+            // 이미 서버에 이력이 있는 사용자를 위한 주 동작 — 눌러서 바로 당긴다.
+            FilledButton.icon(
+              onPressed: sync.inProgress
+                  ? null
+                  : () => ref.read(syncControllerProvider.notifier).sync(),
               style: FilledButton.styleFrom(
                 backgroundColor: AppColors.pinkStrong,
                 padding:
@@ -77,8 +85,25 @@ class OnboardingView extends StatelessWidget {
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(9)),
               ),
-              child: const Text('크롬 익스텐션 설치',
-                  style: TextStyle(fontWeight: FontWeight.bold)),
+              icon: sync.inProgress
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Icon(Icons.sync, size: 18),
+              label: Text(sync.inProgress ? '가져오는 중…' : '내 이력 가져오기',
+                  style: const TextStyle(fontWeight: FontWeight.bold)),
+            ),
+            const SizedBox(height: 12),
+            // 익스텐션 설치는 보조 동작으로 내린다.
+            TextButton(
+              onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('크롬 익스텐션은 별도로 배포돼요.')),
+              ),
+              style: TextButton.styleFrom(foregroundColor: AppColors.textMuted),
+              child: const Text('크롬 익스텐션 설치'),
             ),
           ],
         ),

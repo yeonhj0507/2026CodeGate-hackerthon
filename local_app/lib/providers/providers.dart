@@ -279,6 +279,70 @@ final nodePositionsProvider =
   return NodePositionsController(ref.watch(databaseProvider));
 });
 
+// ── 기간 필터 ──────────────────────────────────────────────────────────────
+
+/// 지도에 보여줄 기간 필터. 개념을 **처음 배운 날**(first-seen) 기준으로 최근
+/// 것만 남긴다. 시간 정보가 없는 노드(추천·기사 등)는 "최근 N일"에서 자연히 빠진다.
+enum GraphPeriodFilter { all, days7, month1, months3 }
+
+extension GraphPeriodFilterX on GraphPeriodFilter {
+  String get label => switch (this) {
+        GraphPeriodFilter.all => '전체',
+        GraphPeriodFilter.days7 => '최근 7일',
+        GraphPeriodFilter.month1 => '1개월',
+        GraphPeriodFilter.months3 => '3개월',
+      };
+
+  /// 이 기간의 시간 창. `null`이면 필터 없음(전체).
+  Duration? get window => switch (this) {
+        GraphPeriodFilter.all => null,
+        GraphPeriodFilter.days7 => const Duration(days: 7),
+        GraphPeriodFilter.month1 => const Duration(days: 30),
+        GraphPeriodFilter.months3 => const Duration(days: 90),
+      };
+}
+
+final graphPeriodFilterProvider =
+    StateProvider<GraphPeriodFilter>((ref) => GraphPeriodFilter.all);
+
+/// 개념명 → 최초 학습일. 동기화가 학습이력을 갱신하므로, 그래프가 흐를 때마다
+/// 다시 읽어 필터 기준을 최신으로 유지한다.
+final conceptFirstSeenProvider = FutureProvider<Map<String, DateTime>>((ref) {
+  ref.watch(graphProvider); // 동기화 후 자동 갱신
+  return ref.watch(databaseProvider).loadConceptFirstSeen();
+});
+
+/// [graph] 에서 기간 창 안에 처음 배운 개념만 남긴 부분 그래프.
+///
+/// 순수 함수다. 남긴 노드끼리의 엣지만 유지한다(끊긴 엣지는 버린다). 창이
+/// `null`이거나 걸러낼 게 없으면 원본을 그대로 돌려준다.
+Graph filterGraphByPeriod(
+  Graph graph,
+  Map<String, DateTime> firstSeenByConcept,
+  Duration? window, {
+  DateTime? now,
+}) {
+  if (window == null) return graph;
+  final cutoff = (now ?? DateTime.now()).toUtc().subtract(window);
+
+  final keptIds = <String>{};
+  final nodes = <GraphNode>[];
+  for (final n in graph.nodes) {
+    final t = firstSeenByConcept[n.concept];
+    if (t != null && !t.toUtc().isBefore(cutoff)) {
+      nodes.add(n);
+      keptIds.add(n.id);
+    }
+  }
+  if (nodes.length == graph.nodes.length) return graph;
+
+  final edges = [
+    for (final e in graph.edges)
+      if (keptIds.contains(e.from) && keptIds.contains(e.to)) e,
+  ];
+  return Graph(nodes: nodes, edges: edges);
+}
+
 // ── 우측 패널 ──────────────────────────────────────────────────────────────
 
 /// 우측 도킹 패널이 지금 보여주는 화면.
