@@ -265,7 +265,41 @@ class _ExploreResultView extends StatelessWidget {
           const SizedBox(height: 8),
           for (final a in result.articles) _ExploreArticleTile(article: a),
         ],
+        // 웹 뉴스 검색이 실패했으면 기사 영역에만 알린다(설명은 그대로 둔다).
+        // 제휴 기사가 있으면 그 아래에, 없으면 이 안내만 뜬다.
+        if (result.searchFailed) ...[
+          const SizedBox(height: 16),
+          const _SearchFailedNote(),
+        ],
       ],
+    );
+  }
+}
+
+/// 웹 뉴스 검색이 실패했을 때 기사 영역에 뜨는 안내.
+class _SearchFailedNote extends StatelessWidget {
+  const _SearchFailedNote();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.pinkBgFaint,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: const Row(
+        children: [
+          Icon(Icons.error_outline, size: 15, color: AppColors.pink),
+          SizedBox(width: 8),
+          Expanded(
+            child: Text('뉴스 검색에 실패했어요.',
+                style: TextStyle(fontSize: 12, color: AppColors.textPrimary)),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -8,6 +8,7 @@ import httpx
 import pytest
 
 from app.core.config import get_settings
+from app.domain.search.base import SearchError
 from app.domain.search.naver_search import NaverSearchProvider, _plain
 
 ITEM = {
@@ -100,17 +101,20 @@ async def test_sends_the_concepts_as_one_query(monkeypatch):
     assert captured["params"]["query"] == "기준금리 환율 물가"
 
 
-async def test_network_failure_is_swallowed(monkeypatch):
-    """추천은 부가 기능이다 — 검색이 죽어도 동기화는 계속돼야 한다."""
+async def test_network_failure_raises_search_error(monkeypatch):
+    """호출 실패는 '결과 0건'과 구분한다 — SearchError 로 알린다. 이걸 삼킬지
+    (동기화) 표면화할지(융합검색)는 호출부가 정한다(recommend_articles)."""
     _stub(monkeypatch, raises=httpx.ConnectError("boom"))
 
-    assert await NaverSearchProvider().search_articles(["기준금리"], 3) == []
+    with pytest.raises(SearchError):
+        await NaverSearchProvider().search_articles(["기준금리"], 3)
 
 
-async def test_http_error_is_swallowed(monkeypatch):
+async def test_http_error_raises_search_error(monkeypatch):
     _stub(monkeypatch, status=429)
 
-    assert await NaverSearchProvider().search_articles(["기준금리"], 3) == []
+    with pytest.raises(SearchError):
+        await NaverSearchProvider().search_articles(["기준금리"], 3)
 
 
 async def test_without_a_key_it_does_not_call_out(monkeypatch):

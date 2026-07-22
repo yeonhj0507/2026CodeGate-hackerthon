@@ -31,7 +31,7 @@ import re
 import httpx
 
 from app.core.config import get_settings
-from app.domain.search.base import FoundArticle
+from app.domain.search.base import FoundArticle, SearchError
 from app.domain.search.news_domains import host_of
 
 logger = logging.getLogger(__name__)
@@ -78,9 +78,11 @@ class NaverSearchProvider:
                 )
                 res.raise_for_status()
                 items = res.json().get("items", [])
-        except Exception as exc:  # noqa: BLE001 - 추천 실패가 동기화를 막지 않는다
+        except Exception as exc:  # noqa: BLE001
+            # 결과 0건이 아니라 **호출 실패**다. 빈 목록으로 뭉개지 않고 SearchError
+            # 로 알린다 — 호출부(동기화/융합검색)가 삼킬지 표면화할지 정한다.
             logger.warning("네이버 검색 실패: %s", exc)
-            return []
+            raise SearchError(str(exc)) from exc
 
         found: list[FoundArticle] = []
         seen: set[str] = set()

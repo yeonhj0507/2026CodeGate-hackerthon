@@ -23,9 +23,22 @@ class FoundArticle:
     summary: str = ""
 
 
+class SearchError(Exception):
+    """검색 호출이 **실패**했음을 뜻한다(네트워크·인증·응답 오류).
+
+    "결과가 0건"과 구분하기 위한 신호다. 결과 없음은 여전히 빈 목록으로 두고,
+    실제 호출 실패만 이 예외로 알린다. 호출부가 이걸 삼킬지(동기화: 제휴만으로
+    진행) 표면화할지(융합검색: "뉴스 검색 실패" 표시) 정한다.
+    """
+
+
 class SearchProvider(Protocol):
     async def search_articles(self, concepts: list[str], limit: int) -> list[FoundArticle]:
-        """개념어들과 관련된 한국어 기사를 찾는다. 실패 시 빈 목록(추천은 부가 기능이다)."""
+        """개념어들과 관련된 한국어 기사를 찾는다.
+
+        결과가 없으면 빈 목록. 호출 자체가 실패하면 [SearchError] 를 던진다
+        (호출부가 실패와 무결과를 구분할 수 있게).
+        """
         ...
 
 

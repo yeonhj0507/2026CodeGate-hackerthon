@@ -17,5 +17,9 @@ abstract final class AppColors {
   static const pinkMuted = Color(0xFFC2808F);
   static const gray = Color(0xFF9CA0A8);
 
+  /// 추천 개념(unknown) 노드의 채움색 — 알약 자체가 회색으로 읽히게 한다.
+  /// 이해완료(흰색)·미이해(분홍)와 한눈에 구분되는 옅은 회색.
+  static const grayBg = Color(0xFFE6E7EA);
+
   static const chipSelectedBg = Color(0xFF1F1E1D);
 }
