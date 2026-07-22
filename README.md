@@ -99,6 +99,7 @@ VITE_API_BASE_URL=http://127.0.0.1:8000 npm run build   # → extension/dist/
 | `POST /thoughtmap/update` | 로컬 앱 | `{graph, userContext}` → 갱신 그래프 + 추천 |
 | `POST /thoughtmap/ack` | 로컬 앱 | 반영 완료 스크랩을 버퍼에서 삭제 |
 | `POST /explore` | 로컬 앱 | 키워드 2~3개 → 묶음 설명 + 관련 기사 |
+| `GET /download` · `/download/win` | 웹 | 설치 랜딩 페이지 · 최신 설치기로 리다이렉트 |
 | `GET /health` | — | 헬스체크 |
 
 전체 요청/응답 스키마와 LLM 호출 정책은 [`server/README.md`](server/README.md)를 참고.
@@ -127,8 +128,8 @@ VITE_API_BASE_URL=http://127.0.0.1:8000 npm run build   # → extension/dist/
 ├─ extension/      크롬 익스텐션 (Vite + React, MV3)
 ├─ local_app/      Flutter Windows 앱 (생각 지도 원본·시각화)
 ├─ server/         FastAPI 백엔드 (퀴즈·그래프·인증)
-├─ deploy/         Windows 설치기 빌드 (build.ps1 + Inno Setup)
-└─ render.yaml     서버 배포 Blueprint (Render + Supabase)
+├─ deploy/         Windows 설치기 빌드 (build.ps1 + Inno Setup, 앱+익스텐션)
+└─ render.yaml     서버 배포 Blueprint (Render: FastAPI 앱 + PostgreSQL)
 ```
 
 각 디렉터리의 README에 상세 설명이 있다: [익스텐션](extension/) · [로컬 앱](local_app/README.md) · [서버](server/README.md) · [배포](deploy/README.md).
@@ -137,6 +138,6 @@ VITE_API_BASE_URL=http://127.0.0.1:8000 npm run build   # → extension/dist/
 
 ## 배포
 
-- **서버:** Render(컴퓨트) + Supabase(PostgreSQL + pgvector). [`server/DEPLOY.md`](server/DEPLOY.md).
-- **로컬 앱:** `deploy/build.ps1`이 서버 URL을 주입해 Flutter 릴리스를 빌드하고 Inno Setup으로 단일 설치기(`ProberSetup-<버전>.exe`)를 만든다. [`deploy/README.md`](deploy/README.md).
-- **익스텐션:** 설치기에 포함되지 않으며 별도로 빌드·배포한다.
+- **서버 + DB:** Render 한 곳에 FastAPI 앱과 PostgreSQL(pgvector)을 함께 올린다(`render.yaml` Blueprint, `DATABASE_URL` 자동 연결). [`server/DEPLOY.md`](server/DEPLOY.md). *DB를 Supabase·Neon 등으로 바꿔도 코드 변경은 없다.*
+- **설치기(앱 + 익스텐션):** `deploy/build.ps1`이 서버 URL을 주입해 Flutter 앱과 크롬 익스텐션을 함께 빌드하고, Inno Setup으로 **둘을 담은 단일 설치기**(`ProberSetup-<버전>.exe`)를 만든다. 설치 마지막에 크롬 확장 등록을 안내한다(가이드형 압축해제 로드). [`deploy/README.md`](deploy/README.md).
+- **다운로드:** 배포된 서버가 `GET /download` 로 설치 랜딩 페이지를 제공하고, `/download/win` 이 GitHub Releases 의 최신 설치기(`ProberSetup-<버전>.exe`)로 리다이렉트한다. 사용자에게는 `<서버>/download` 링크만 안내하면 된다.
