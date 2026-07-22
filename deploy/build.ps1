@@ -84,7 +84,9 @@ $iscc    = Resolve-Tool 'Inno Setup (ISCC)' @(
     'ISCC'
 ) 'https://jrsoftware.org/isdl.php 에서 Inno Setup 6 을 설치하세요.'
 $npm = if ($SkipExtension) { $null } else {
-    Resolve-Tool 'npm' @('npm') 'Node.js(https://nodejs.org) 를 설치하세요.'
+    # npm.cmd 를 우선한다 — PowerShell 이 npm.ps1(nvm4w 등)을 잡으면 `& $npm ci` 로
+    # 인자 전달이 깨진다("Unknown command: npm"). .cmd 는 안전하게 동작한다.
+    Resolve-Tool 'npm' @('npm.cmd', 'npm') 'Node.js(https://nodejs.org) 를 설치하세요.'
 }
 Write-Host "flutter : $flutter"
 Write-Host "iscc    : $iscc"
