@@ -192,6 +192,28 @@ class AppDatabase extends _$AppDatabase {
     );
   }
 
+  /// 개념명 → **처음 학습한 시각**(min occurredAt). 기간 필터("최근 7일" 등)의
+  /// 기준값이다.
+  ///
+  /// 최근 학습일(max)이 아니라 최초 학습일(min)을 쓰는 이유: [recordSyncOutcome]
+  /// 가 매 동기화마다 알고 있는 개념 전부에 새 이력 행을 넣어서, max 는 언제나
+  /// 마지막 동기화 시각이 돼 개념을 구분하지 못한다. min 만이 "이 개념을 언제
+  /// 처음 알게 됐나"를 담는다.
+  ///
+  /// 집계를 SQL 로 하지 않고 행을 그대로 읽어 Dart 에서 접는다 — DateTime 저장
+  /// 포맷(초/밀리초)에 얽매이지 않게(타입드 로우가 변환을 책임진다).
+  Future<Map<String, DateTime>> loadConceptFirstSeen() async {
+    final rows = await select(learningHistories).get();
+    final out = <String, DateTime>{};
+    for (final r in rows) {
+      final cur = out[r.conceptTag];
+      if (cur == null || r.occurredAt.isBefore(cur)) {
+        out[r.conceptTag] = r.occurredAt;
+      }
+    }
+    return out;
+  }
+
   /// 동기화로 새로 알게 된 사실을 로컬 학습이력에 남긴다.
   ///
   /// 익스텐션의 스크랩은 서버 버퍼를 거쳐 그래프로만 돌아오므로, 로컬은

@@ -45,11 +45,22 @@ class _HomePageState extends ConsumerState<HomePage> {
 
     final graph = graphAsync.valueOrNull ?? Graph.empty;
 
+    // 기간 필터 — 개념을 처음 배운 날 기준으로 최근 것만 남긴다. 최초 학습일이
+    // 아직 안 읽혔으면(로딩) 필터를 미뤄 전체를 보여준다(빈 화면 깜빡임 방지).
+    final period = ref.watch(graphPeriodFilterProvider);
+    final periodGraph = ref.watch(conceptFirstSeenProvider).maybeWhen(
+          data: (firstSeen) =>
+              filterGraphByPeriod(graph, firstSeen, period.window),
+          orElse: () => graph,
+        );
+
     // 추천 패널이 열려 있는 동안만 확장 후보를 지도에 임시 노드로 얹는다.
     // 카드에 낱말만 뜨면 그 개념이 내가 아는 것 중 무엇에서 나왔는지 안 보인다.
+    // 확장 후보는 시간 정보가 없으므로 **기간 필터 뒤에** 얹어 항상 보이게 한다.
     final displayGraph = mode == RightPanelMode.recommendations
-        ? withExpansionCandidates(graph, sync.recommendations.expansionConcepts)
-        : graph;
+        ? withExpansionCandidates(
+            periodGraph, sync.recommendations.expansionConcepts)
+        : periodGraph;
 
     // 노드 상세 카드는 ThoughtMapView 가 노드 옆에 직접 띄운다(_NodeDetailOverlay).
     // 여기서 좌하단에 고정으로 그리지 않는다.
@@ -338,26 +349,19 @@ class _DockedPanel extends StatelessWidget {
 }
 
 /// 상단 기간 필터 드롭다운. 시안엔 있지만 실제 필터링 로직은 아직 없다 — UI만 배치한다.
-class _FilterChips extends StatefulWidget {
+class _FilterChips extends ConsumerWidget {
   const _FilterChips();
 
   @override
-  State<_FilterChips> createState() => _FilterChipsState();
-}
-
-class _FilterChipsState extends State<_FilterChips> {
-  static const _options = ['전체', '최근 7일', '1개월', '3개월'];
-
-  String _selected = _options.first;
-
-  @override
-  Widget build(BuildContext context) {
-    return PopupMenuButton<String>(
-      initialValue: _selected,
-      onSelected: (v) => setState(() => _selected = v),
+  Widget build(BuildContext context, WidgetRef ref) {
+    final selected = ref.watch(graphPeriodFilterProvider);
+    return PopupMenuButton<GraphPeriodFilter>(
+      initialValue: selected,
+      onSelected: (v) =>
+          ref.read(graphPeriodFilterProvider.notifier).state = v,
       itemBuilder: (_) => [
-        for (final option in _options)
-          PopupMenuItem(value: option, child: Text(option)),
+        for (final option in GraphPeriodFilter.values)
+          PopupMenuItem(value: option, child: Text(option.label)),
       ],
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -369,7 +373,7 @@ class _FilterChipsState extends State<_FilterChips> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              _selected,
+              selected.label,
               style: const TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.bold,
