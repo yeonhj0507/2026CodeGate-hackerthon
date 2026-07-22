@@ -762,7 +762,9 @@ NodeStyle nodeStyleOfState(String state) {
       // 선행 관계로만 들어온 개념도 여기 해당한다. 서버가 새 상태값을 보내와도
       // 렌더는 살아 있게 한다.
       return const NodeStyle(
-        fill: AppColors.canvasBg,
+        // 채움을 회색으로 둔다 — 노드 텍스트가 검정 통일이고 테두리는 평소
+        // 투명이라, 채움색이 "추천 개념 = 회색"을 드러내는 유일한 신호다.
+        fill: AppColors.grayBg,
         border: AppColors.gray,
         text: AppColors.gray,
         label: '추천 개념',
