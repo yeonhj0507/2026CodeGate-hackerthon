@@ -77,6 +77,24 @@ pwsh ./build.ps1 -ApiBaseUrl https://prober-api.onrender.com
 ```
 (익스텐션도: `cd extension; $env:VITE_API_BASE_URL="https://prober-api.onrender.com"; npm ci; npm run build`)
 
+## 5. 설치 파일 다운로드 페이지
+
+서버가 다운로드 랜딩 페이지를 겸한다(별도 프론트 불필요):
+- `GET /download` → 설치 안내 + **Windows용 다운로드** 버튼(HTML).
+- `GET /download/win` → 실제 설치 파일로 302 리다이렉트.
+
+실제 `.exe` 는 **GitHub Releases 의 `app-latest` 태그 애셋**(`ProberSetup.exe`)에 둔다
+(Render 리눅스 컨테이너는 Windows exe 를 만들 수 없다). 빌드하면서 함께 올리려면:
+
+```powershell
+cd deploy
+pwsh ./build.ps1 -ApiBaseUrl https://prober-api.onrender.com -PublishRelease
+# gh CLI 로그인 필요. app-latest 릴리스에 ProberSetup.exe 로 업로드(--clobber)한다.
+```
+
+이후 사용자에게는 `https://prober-api.onrender.com/download` 만 안내하면 된다.
+바이너리를 다른 곳(R2/스토리지)으로 옮기려면 `DOWNLOAD_URL` 환경변수만 바꾼다(코드 변경 없음).
+
 ---
 
 ## 트러블슈팅

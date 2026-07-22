@@ -10,6 +10,7 @@ from app.auth.router import router as auth_router
 from app.core.config import settings
 from app.core.errors import register_error_handlers
 from app.core.ratelimit import limiter
+from app.download.router import router as download_router
 from app.domain.explore.router import router as explore_router
 from app.domain.quiz.router import router as quiz_router
 from app.domain.scrap.router import router as scrap_router
@@ -53,6 +54,7 @@ app.include_router(quiz_router)
 app.include_router(scrap_router)
 app.include_router(thoughtmap_router)
 app.include_router(explore_router)
+app.include_router(download_router)
 
 
 @app.get("/health", tags=["health"])
