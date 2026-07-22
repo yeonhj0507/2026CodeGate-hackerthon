@@ -92,6 +92,23 @@ function detectArticle(): ExtractResult | null {
 }
 
 async function boot(): Promise<BootResult> {
+  // 0) 로그인 확인 — 서버 /quiz·/scrap 은 인증이 필요하다(계정별 지식그래프).
+  //    미로그인이면 여기서 멈추고, 이 사유를 시작 카드/팝업이 그대로 보여준다.
+  let auth: ChromeMessage | null = null
+  try {
+    auth = (await chrome.runtime.sendMessage({
+      type: 'GET_AUTH_STATUS',
+    } satisfies ChromeMessage)) as ChromeMessage
+  } catch {
+    auth = null
+  }
+  if (!auth || auth.type !== 'AUTH_STATUS' || !auth.loggedIn) {
+    return {
+      ok: false,
+      reason: '로그인이 필요합니다. 오른쪽 위 프로버(Prober) 아이콘을 눌러 로그인해 주세요.',
+    }
+  }
+
   // 0~1) URL 게이트 + 본문 추출. 시작 시점의 DOM 으로 다시 추출한다
   //      (제안 카드가 뜬 뒤 본문이 더 로드됐을 수 있다. extractArticle 은 idempotent).
   if (isNonArticleUrl(location.href)) {
