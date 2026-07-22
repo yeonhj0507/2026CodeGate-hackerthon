@@ -44,6 +44,15 @@ class Settings(BaseSettings):
     # --- App ---
     app_name: str = "Prober Auth Service"
 
+    # --- 설치 파일 다운로드 (/download 페이지) ---
+    # /download/win 이 리다이렉트할 실제 설치 파일 위치. 기본은 GitHub Releases 의
+    # 고정 태그(app-latest) 애셋. build.ps1 -PublishRelease 가 이 태그로 업로드한다.
+    # 다른 곳(R2/스토리지)으로 옮기면 DOWNLOAD_URL 환경변수만 바꾸면 된다.
+    download_url: str = (
+        "https://github.com/yeonhj0507/2026CodeGate-hackerthon"
+        "/releases/download/app-latest/ProberSetup.exe"
+    )
+
     # --- LLM (담당3: 퀴즈 생성·개념 재요약) ---
     # "mock" | "claude". 키 확보 전에는 mock 으로 전 파이프라인이 동작한다.
     llm_provider: str = "mock"

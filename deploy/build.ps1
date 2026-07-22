@@ -33,7 +33,14 @@ param(
     [string]$UseMock = 'false',
 
     # 이미 빌드된 산출물을 재사용하고 싶을 때.
-    [switch]$SkipFlutter
+    [switch]$SkipFlutter,
+
+    # 빌드한 설치기를 GitHub Releases(app-latest 태그)에 ProberSetup.exe 로 업로드.
+    # /download 페이지가 이 애셋을 가리킨다. gh CLI 로그인 필요.
+    [switch]$PublishRelease,
+
+    # 릴리스 애셋을 올릴 태그(고정 롤링 태그). config.py 의 download_url 과 일치해야 함.
+    [string]$ReleaseTag = 'app-latest'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -116,6 +123,27 @@ Write-Step 'Inno Setup 컴파일'
 if ($LASTEXITCODE -ne 0) { Fail 'ISCC 컴파일 실패' }
 
 $setup = Get-ChildItem $DistDir -Filter 'ProberSetup-*.exe' | Sort-Object LastWriteTime | Select-Object -Last 1
+
+# ── 4) (선택) GitHub Releases 업로드 ─────────────────────────────────────────
+if ($PublishRelease) {
+    Write-Step "GitHub Releases 업로드 ($ReleaseTag)"
+    $gh = Resolve-Tool 'GitHub CLI (gh)' @('gh') 'https://cli.github.com 에서 설치 후 gh auth login 하세요.'
+    # /download/win 이 항상 같은 URL 을 가리키도록 애셋 이름을 ProberSetup.exe 로 고정한다.
+    # gh 의 "파일#표시이름" 문법으로 로컬 버전 파일명은 유지하면서 애셋명만 지정.
+    $asset = "$($setup.FullName)#ProberSetup.exe"
+    $notes = "Prober 데스크톱 앱 설치기 ($FullVersion). 서버: $ApiBaseUrl"
+    # 롤링 태그: 없으면 생성, 있으면 애셋만 교체(--clobber).
+    & $gh release view $ReleaseTag *> $null
+    if ($LASTEXITCODE -eq 0) {
+        & $gh release upload $ReleaseTag $asset --clobber
+    } else {
+        & $gh release create $ReleaseTag $asset --title "Prober 설치기 (latest)" --notes $notes
+    }
+    if ($LASTEXITCODE -ne 0) { Fail 'gh release 업로드 실패' }
+    Write-Host "업로드 완료 → 다운로드 페이지의 /download/win 이 이 애셋을 가리킵니다."
+}
+
 Write-Step '완료'
 Write-Host "설치 프로그램: $($setup.FullName)" -ForegroundColor Green
 Write-Host "서버 URL     : $ApiBaseUrl"
+if ($PublishRelease) { Write-Host "다운로드 페이지: $ApiBaseUrl/download" }
